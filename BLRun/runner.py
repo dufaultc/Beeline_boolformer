@@ -12,11 +12,13 @@ import BLRun.grisliRunner as GRISLI
 import BLRun.singeRunner as SINGE
 import BLRun.scribeRunner as SCRIBE
 import BLRun.scsglRunner as SCSGL
+import BLRun.boolformerRunner as Boolformer
 
 from pathlib import Path
 
 InputMapper = {'SCODE':SCODE.generateInputs,
                'SINCERITIES':SINCERITIES.generateInputs,
+               'Boolformer':Boolformer.generateInputs,               
                'SCNS':SCNS.generateInputs,
                'PIDC':PIDC.generateInputs,
                'GRNVBEM':GRNVBEM.generateInputs,
@@ -35,6 +37,7 @@ InputMapper = {'SCODE':SCODE.generateInputs,
 
 AlgorithmMapper = {'SCODE':SCODE.run,
             'SINCERITIES':SINCERITIES.run,
+            'Boolformer':Boolformer.run,            
             'SCNS':SCNS.run,
             'PIDC':PIDC.run,
             'GRNVBEM':GRNVBEM.run,
@@ -52,6 +55,7 @@ AlgorithmMapper = {'SCODE':SCODE.run,
 
 OutputParser = {'SCODE':SCODE.parseOutput, 
             'SINCERITIES':SINCERITIES.parseOutput,
+            'Boolformer':Boolformer.parseOutput,            
             'SCNS':SCNS.parseOutput,
             'PIDC':PIDC.parseOutput,
             'GRNVBEM':GRNVBEM.parseOutput,
