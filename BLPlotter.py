@@ -89,7 +89,8 @@ def boxplot(opts, evalConfigs, datasets, randValue, resTypeFile, resTypeName):
      
     for i, dataset in enumerate(datasets):
         DF = DFs[i]
-        modifiedDF = pd.melt(DF, id_vars=DF.index, value_vars=DF.columns)
+        print(DF.head())
+        modifiedDF = pd.melt(DF.reset_index(), id_vars="index", value_vars=DF.columns)
               
         if len(datasets) > 1:
             subax = axes[i]

@@ -54,6 +54,7 @@ def run(RunnerObj):
     os.makedirs(outDir, exist_ok = True)
     
     outPath = str(outDir) + 'outFile.txt'
+    timePath = str(outDir) + 'time.txt'
     outPathDynamics = str(outDir) + 'outDynamics.txt'
     boolformer_model = load_boolformer("noisy")
     
@@ -64,7 +65,8 @@ def run(RunnerObj):
         boolformer_model,
         inputPath,
         outPath,  
-        outPathDynamics,      
+        outPathDynamics,   
+        timePath,   
         beam_size=5,
     )    
 
@@ -100,6 +102,7 @@ def run_grn(
     inputPath,
     outPath,
     outPathDynamics,
+    timePath,
     max_points = 1000,
     verbose=False,
     beam_size=1,
@@ -158,6 +161,9 @@ def run_grn(
 
     dynamics_file = open(outPathDynamics, "w")
     structure_file = open(outPath, "w")
+    time_file = open(timePath, "w")
+    time_file.write("\n"+str(elapsed))
+    time_file.close()
     structure_file.write('\t'.join(["TF", "target", "importance"]))
     for idx, pred_tree in enumerate(pred_trees):
         if not pred_tree:
