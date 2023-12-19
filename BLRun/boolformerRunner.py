@@ -15,87 +15,98 @@ from boolformer import load_boolformer
 import numpy as np
 import torch
 
+
 def generateInputs(RunnerObj):
-    '''
+    """
     Function to generate desired inputs for Boolformer.
-    If the folder/files under RunnerObj.datadir exist, 
+    If the folder/files under RunnerObj.datadir exist,
     this function will not do anything.
 
     :param RunnerObj: An instance of the :class:`BLRun`
-    '''
+    """
     if not RunnerObj.inputDir.joinpath("Boolformer").exists():
         print("Input folder for Boolformer does not exist, creating input folder...")
-        RunnerObj.inputDir.joinpath("Boolformer").mkdir(exist_ok = False)
-        
-    #if not RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv").exists():
-        # input data
-    ExpressionData = pd.read_csv(RunnerObj.inputDir.joinpath(RunnerObj.exprData),
-                                    header = 0, index_col = 0)
+        RunnerObj.inputDir.joinpath("Boolformer").mkdir(exist_ok=False)
+
+    # if not RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv").exists():
+    # input data
+    ExpressionData = pd.read_csv(
+        RunnerObj.inputDir.joinpath(RunnerObj.exprData), header=0, index_col=0
+    )
 
     # Convert input expression to boolean
     # If  the gene's expression value is >= it's avg. expression across cells
     # it receieves a "True", else "False"
-    BinExpression = ExpressionData.T >= ExpressionData.mean(axis = 'columns')
-    BinExpression.drop_duplicates(inplace= True)
+    BinExpression = ExpressionData.T >= ExpressionData.mean(axis="columns")
+    BinExpression.drop_duplicates(inplace=True)
     # Write unique cells x genes output to a file
-    BinExpression.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv")) 
-    
+    BinExpression.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
+
+
 def run(RunnerObj):
-    '''
+    """
     Function to run Boolformer algorithm
 
     :param RunnerObj: An instance of the :class:`BLRun`
-    '''
+    """
     print(os.getcwd())
-    inputPath = "/home/cameron/repos/Beeline_boolformer" + str(RunnerObj.inputDir).split(str(Path.cwd()))[1] + \
-                    "/Boolformer/ExpressionData.csv"
+    inputPath = (
+        "/home/cameron/repos/Beeline_boolformer"
+        + str(RunnerObj.inputDir).split(str(Path.cwd()))[1]
+        + "/Boolformer/ExpressionData.csv"
+    )
     # make output dirs if they do not exist:
-    outDir =  "/home/cameron/repos/Beeline_boolformer/" + "outputs/"+str(RunnerObj.inputDir).split("inputs/")[1]+"/Boolformer/"
-    os.makedirs(outDir, exist_ok = True)
-    
-    outPath = str(outDir) + 'outFile.txt'
-    timePath = str(outDir) + 'time.txt'
-    outPathDynamics = str(outDir) + 'outDynamics.txt'
+    outDir = (
+        "/home/cameron/repos/Beeline_boolformer/"
+        + "outputs/"
+        + str(RunnerObj.inputDir).split("inputs/")[1]
+        + "/Boolformer/"
+    )
+    os.makedirs(outDir, exist_ok=True)
+
+    outPath = str(outDir) + "outFile.txt"
+    timePath = str(outDir) + "time.txt"
+    outPathDynamics = str(outDir) + "outDynamics.txt"
     boolformer_model = load_boolformer("noisy")
-    
+
     boolformer_model.cuda()
     boolformer_model.embedder.params.cpu = False
     boolformer_model.eval()
     run_grn(
         boolformer_model,
         inputPath,
-        outPath,  
-        outPathDynamics,   
-        timePath,   
+        outPath,
+        outPathDynamics,
+        timePath,
         beam_size=5,
-    )    
-
+    )
 
 
 def parseOutput(RunnerObj):
-    '''
+    """
     Function to parse outputs from GENIE3.
 
     :param RunnerObj: An instance of the :class:`BLRun`
-    '''
+    """
     # Quit if output directory does not exist
-    outDir = "outputs/"+str(RunnerObj.inputDir).split("inputs/")[1]+"/Boolformer/"
+    outDir = "outputs/" + str(RunnerObj.inputDir).split("inputs/")[1] + "/Boolformer/"
 
-        
     # Read output
-    OutDF = pd.read_csv(outDir+'outFile.txt', sep = '\t', header = 0)
-    
-    if not Path(outDir+'outFile.txt').exists():
-        print(outDir+'outFile.txt'+'does not exist, skipping...')
+    OutDF = pd.read_csv(outDir + "outFile.txt", sep="\t", header=0)
+
+    if not Path(outDir + "outFile.txt").exists():
+        print(outDir + "outFile.txt" + "does not exist, skipping...")
         return
-    
-    outFile = open(outDir + 'rankedEdges.csv','w')
-    outFile.write('Gene1'+'\t'+'Gene2'+'\t'+'EdgeWeight'+'\n')
+
+    outFile = open(outDir + "rankedEdges.csv", "w")
+    outFile.write("Gene1" + "\t" + "Gene2" + "\t" + "EdgeWeight" + "\n")
 
     for idx, row in OutDF.iterrows():
-        outFile.write('\t'.join([row['TF'],row['target'],str(row['importance'])])+'\n')
+        outFile.write(
+            "\t".join([row["TF"], row["target"], str(row["importance"])]) + "\n"
+        )
     outFile.close()
-    
+
 
 def run_grn(
     model,
@@ -103,7 +114,7 @@ def run_grn(
     outPath,
     outPathDynamics,
     timePath,
-    max_points = 1000,
+    max_points=1000,
     verbose=False,
     beam_size=1,
     batch_size=4,
@@ -118,7 +129,6 @@ def run_grn(
     dynamic_errors, execution_times = [], []
 
     variable_counts = defaultdict(int)
-
 
     n_vars = len(df.columns)
 
@@ -162,9 +172,9 @@ def run_grn(
     dynamics_file = open(outPathDynamics, "w")
     structure_file = open(outPath, "w")
     time_file = open(timePath, "w")
-    time_file.write("\n"+str(elapsed))
+    time_file.write("\n" + str(elapsed))
     time_file.close()
-    structure_file.write('\t'.join(["TF", "target", "importance"]))
+    structure_file.write("\t".join(["TF", "target", "importance"]))
     for idx, pred_tree in enumerate(pred_trees):
         if not pred_tree:
             continue
@@ -173,19 +183,16 @@ def run_grn(
         for var in used_variables:
             variable_counts[var] += 1
         line = f"{genes[idx]} = {pred_tree.infix()}"
-        line = (
-            line.replace("and", "&")
-            .replace("or", "||")
-            .replace("not", "!")
-        )
+        line = line.replace("and", "&").replace("or", "||").replace("not", "!")
         line += "\n"
         dynamics_file.write(line)
         for var in used_variables:
             var_idx = int(var.split("_")[-1])
             influence = f"{genes[idx]} <- {genes[var_idx-1]}" + "\n"
-            structure_file.write('\n'+'\t'.join([genes[var_idx-1], genes[idx], str(1)]))
-            #structure_file.write(influence)
-
+            structure_file.write(
+                "\n" + "\t".join([genes[var_idx - 1], genes[idx], str(1)])
+            )
+            # structure_file.write(influence)
 
     # print top 10 variables sorted by count
     print(sorted(variable_counts.items(), key=lambda x: -x[1])[:10])
