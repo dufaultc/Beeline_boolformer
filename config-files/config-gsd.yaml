@@ -49,6 +49,10 @@ input_settings:
         - name: "Boolformer"
           params: 
               should_run: [True]
+              max_points: [5000]
+              beam_size: [10]
+              batch_size: [1]
+              
               
         - name: "PIDC"
           params: 

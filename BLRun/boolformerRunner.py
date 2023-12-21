@@ -14,7 +14,24 @@ from boolformer import load_boolformer
 
 import numpy as np
 import torch
+from sklearn.cluster import KMeans
 
+
+# Boolformer code adaption of https://github.com/sdascoli/boolformer/blob/main/scripts/evaluate_on_grn.py
+
+#The following two methods were created with the help of generative AI tools
+def kmeans_cluster(row_values, num_clusters):
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+    kmeans.fit(row_values.reshape(-1, 1))
+    return kmeans.labels_
+def get_min_avg_cluster(row, clusters):
+    cluster_avg_values = {}
+    
+    for cluster_label in clusters.unique():
+        cluster_avg_values[cluster_label] = np.mean(row[clusters == cluster_label])
+
+    min_avg_cluster = min(cluster_avg_values, key=cluster_avg_values.get)
+    return min_avg_cluster
 
 def generateInputs(RunnerObj):
     """
@@ -33,14 +50,24 @@ def generateInputs(RunnerObj):
     ExpressionData = pd.read_csv(
         RunnerObj.inputDir.joinpath(RunnerObj.exprData), header=0, index_col=0
     )
-
+    ExpressionData = ExpressionData[:130]
+    #print(ExpressionData.std(axis="columns"))
     # Convert input expression to boolean
     # If  the gene's expression value is >= it's avg. expression across cells
-    # it receieves a "True", else "False"
-    BinExpression = ExpressionData.T >= ExpressionData.mean(axis="columns")
-    BinExpression.drop_duplicates(inplace=True)
-    # Write unique cells x genes output to a file
-    BinExpression.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
+    # it receieves a "True", else "False"\
+    #BinExpression = ExpressionData.T >= ExpressionData.mean(
+    #    axis="columns"
+    #  + ExpressionData.std(axis="columns")
+    
+    #The following three lines were created with the help of generative AI tools
+    ClusteredData =  ExpressionData.apply(lambda row: kmeans_cluster(row.values, 2), axis=1, result_type='broadcast')
+    min_avg_clusters = ExpressionData.apply(lambda row: get_min_avg_cluster(row, ClusteredData.loc[row.name]), axis=1)
+    BinExpression = ClusteredData != min_avg_clusters[:, np.newaxis]
+    
+    
+    #BinExpression = ExpressionData.apply(find_lowest_avg_cluster, axis=1).T
+    # Write unique cells x genes output to a file 
+    BinExpression.T.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
 
 
 def run(RunnerObj):
@@ -78,13 +105,15 @@ def run(RunnerObj):
         outPath,
         outPathDynamics,
         timePath,
-        beam_size=5,
+        beam_size=int(RunnerObj.params.get("beam_size", 5)),
+        max_points=int(RunnerObj.params.get("max_points", 1000)),
+        batch_size=int(RunnerObj.params.get("batch_size", 4)),
     )
 
 
 def parseOutput(RunnerObj):
     """
-    Function to parse outputs from GENIE3.
+    Function to parse outputs from Boolformer.
 
     :param RunnerObj: An instance of the :class:`BLRun`
     """
@@ -115,7 +144,6 @@ def run_grn(
     outPathDynamics,
     timePath,
     max_points=1000,
-    verbose=False,
     beam_size=1,
     batch_size=4,
     sort_by="error",
@@ -127,35 +155,38 @@ def run_grn(
     rows, columns = df.shape
     seriesSize = rows
     dynamic_errors, execution_times = [], []
-
     variable_counts = defaultdict(int)
 
     n_vars = len(df.columns)
-
-    inputs = df.values[None, :, :].repeat(n_vars, axis=0)
-    outputs = np.array([inputs[var, 1:, var] for var in range(n_vars)])
-    # inputs = np.array([np.concatenate((inputs[var,:,:var],inputs[var,:,var+1:]), axis=-1) for var in range(n_vars)])
-    for var in range(n_vars):
-        inputs[var, :, var] = np.random.choice(
-            [0, 1], size=inputs[var, :, var].shape, p=[0.5, 0.5]
-        )
-    inputs = inputs[:, :-1, :]
-    if max_points is not None:
-        # indices = np.random.choice(range(inputs.shape[1]), max_points, replace=False)
-        # inputs, outputs = inputs[:,indices,:], outputs[:,indices]
-        inputs, outputs = inputs[:, :max_points, :], outputs[:, :max_points]
-
-    num_datasets = len(inputs)
+    print(f"{n_vars}")
+    num_datasets = n_vars
     num_batches = num_datasets // batch_size
-
+    print(f"{num_batches}")
     start = time.time()
     pred_trees, error_arr, complexity_arr = [], [], []
-    for batch in range(num_batches):
-        inputs_, outputs_ = (
-            inputs[batch * batch_size : (batch + 1) * batch_size],
-            outputs[batch * batch_size : (batch + 1) * batch_size],
-        )
 
+    for batch in range(num_batches):
+        inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
+
+        outputs_ = np.array(
+            [
+                inputs_[var - batch * batch_size, 1:, var]
+                for var in range(
+                    batch * batch_size, min((batch + 1) * batch_size, n_vars)
+                )
+            ]
+        )
+        print(outputs_.shape)
+        for var in range(batch * batch_size, min((batch + 1) * batch_size, n_vars)):
+            inputs_[var - batch * batch_size, :, var] = np.random.choice(
+                [0, 1],
+                size=inputs_[var - batch * batch_size, :, var].shape,
+                p=[0.5, 0.5],
+            )
+        inputs_ = inputs_[:, :-1, :]
+        if max_points is not None:
+            inputs_, outputs_ = inputs_[:, :max_points, :], outputs_[:, :max_points]
+        print(inputs_.shape)
         pred_trees_, error_arr_, complexity_arr_ = model.fit(
             inputs_,
             outputs_,
@@ -166,15 +197,16 @@ def run_grn(
         pred_trees.extend(pred_trees_), error_arr.extend(
             error_arr_
         ), complexity_arr.extend(complexity_arr_)
-    end = time.time()
-    elapsed = end - start
-
+    print(error_arr)
     dynamics_file = open(outPathDynamics, "w")
     structure_file = open(outPath, "w")
     time_file = open(timePath, "w")
+    end = time.time()
+    elapsed = end - start
     time_file.write("\n" + str(elapsed))
     time_file.close()
     structure_file.write("\t".join(["TF", "target", "importance"]))
+    print(len(pred_trees))
     for idx, pred_tree in enumerate(pred_trees):
         if not pred_tree:
             continue
@@ -198,62 +230,3 @@ def run_grn(
     print(sorted(variable_counts.items(), key=lambda x: -x[1])[:10])
 
 
-def getTargetGenesEvalExpressions(bool_expressions):
-    target_genes = []
-    eval_expressions = []
-    for k in range(0, len(bool_expressions)):
-        expr = bool_expressions[k]
-        gene_num = int(re.search(r"\d+", expr[: expr.find(" = ")]).group())
-        eval_expr = expr[expr.find("= ") + 2 :]
-        target_genes.append(gene_num)
-        eval_expressions.append(eval_expr)
-    return target_genes, eval_expressions
-
-
-def getBooleanExpressions(model_path):
-    bool_expressions = []
-    with open(model_path) as f:
-        bool_expressions = [
-            line.replace("!", " not ")
-            .replace("&", " and ")
-            .replace("||", " or ")
-            .strip()
-            for line in f
-        ]
-    return bool_expressions
-
-
-def evalBooleanModel(model_path, test_series):
-    rows, columns = test_series.shape
-    simulations = test_series.iloc[[0]].copy()  # set initial states
-    bool_expressions = getBooleanExpressions(model_path)
-    target_genes, eval_expressions = getTargetGenesEvalExpressions(bool_expressions)
-
-    # intialize genes to false
-    for k in range(0, columns):
-        gene_num = k + 1
-        exec("Gene" + str(gene_num) + " = False", globals())
-
-    for time_stamp in range(1, rows):
-        # dynamically allocate variables
-        for k in range(0, len(target_genes)):
-            gene_num = target_genes[k]
-            exec(
-                "Gene"
-                + str(gene_num)
-                + " = "
-                + str(simulations.iat[time_stamp - 1, gene_num - 1])
-            )
-
-        # initialize simulation to false
-        ex_row = [0] * columns
-        # evaluate all expression
-        for k in range(0, len(bool_expressions)):
-            gene_num = target_genes[k]
-            eval_expr = eval_expressions[k]
-            # print(eval_expr, eval(eval_expr))
-            ex_row[gene_num - 1] = int(eval(eval_expr))
-        simulations = simulations._append([ex_row], ignore_index=True)
-
-    errors = simulations.sub(test_series)
-    return np.absolute(errors.to_numpy()).sum(), simulations, test_series

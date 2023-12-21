@@ -4,7 +4,7 @@ input_settings:
 
     # Base input directory
     input_dir : "BEELINE-data/inputs/Synthetic"
-    dataset_dir: "dyn-LI"
+    dataset_dir: "dyn-BF"
     # Subdirectory of inputs that datasets are placed in
     #dataset_dir: "GSD"
 
@@ -23,15 +23,15 @@ input_settings:
     # BEELINE will assume that these files are present under the default names 
     # "ExpressionData.csv", "PseudoTime.csv" and "refNetwork.csv", respectively.
     datasets:
-         - name: "dyn-LI-100-1"
+         - name: "dyn-BF-100-1"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
            trueEdges: "refNetwork.csv"
-         - name: "dyn-LI-500-1"
+         - name: "dyn-BF-500-1"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
            trueEdges: "refNetwork.csv"
-         - name: "dyn-LI-2000-1"
+         - name: "dyn-BF-2000-1"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
            trueEdges: "refNetwork.csv"                      
@@ -50,8 +50,8 @@ input_settings:
           params: 
               should_run: [True]
               max_points: [5000]
-              beam_size: [10]
-              batch_size: [1]
+              beam_size: [4]
+              batch_size: [1]              
               
         - name: "PIDC"
           params: 
@@ -66,7 +66,7 @@ input_settings:
 
         - name: "GENIE3"
           params: 
-              should_run: [True]
+              should_run: [False]
               
               
               
@@ -97,20 +97,20 @@ input_settings:
               
         - name: "SINCERITIES"
           params: 
-              should_run: [True]
+              should_run: [False]
               nBins: [10]
               
               
         - name: "LEAP"
           params: 
-              should_run: [True]
+              should_run: [False]
               # Default maxLag value is 0.33
               maxLag: [0.33]
              
               
         - name: "GRISLI"
           params: 
-              should_run: [True]
+              should_run: [False]
               L: [10]
               R: [3000]
               alphaMin: [0.0]
@@ -165,4 +165,4 @@ output_settings:
 
     # Base output directory
     output_dir: "outputs"
-    output_prefix: "dyn-li"
+    output_prefix: "dyn-bf"
