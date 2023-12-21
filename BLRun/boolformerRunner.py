@@ -19,7 +19,7 @@ from sklearn.cluster import KMeans
 
 # Boolformer code adaption of https://github.com/sdascoli/boolformer/blob/main/scripts/evaluate_on_grn.py
 
-#The following two methods were created with the help of generative AI tools
+#The following two methods kmeans_cluster and get_min_avg_cluster were created with the help of generative AI tools
 def kmeans_cluster(row_values, num_clusters):
     kmeans = KMeans(n_clusters=num_clusters, random_state=42)
     kmeans.fit(row_values.reshape(-1, 1))
