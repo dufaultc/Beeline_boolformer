@@ -19,19 +19,29 @@ from sklearn.cluster import KMeans
 
 # Boolformer code adaption of https://github.com/sdascoli/boolformer/blob/main/scripts/evaluate_on_grn.py
 
-#The following two methods kmeans_cluster and get_min_avg_cluster were created with the help of generative AI tools
+
+# The following two methods kmeans_cluster and get_min_avg_cluster were created with the help of generative AI tools
 def kmeans_cluster(row_values, num_clusters):
     kmeans = KMeans(n_clusters=num_clusters, random_state=42)
     kmeans.fit(row_values.reshape(-1, 1))
     return kmeans.labels_
+
+
 def get_min_avg_cluster(row, clusters):
     cluster_avg_values = {}
-    
+
     for cluster_label in clusters.unique():
         cluster_avg_values[cluster_label] = np.mean(row[clusters == cluster_label])
 
     min_avg_cluster = min(cluster_avg_values, key=cluster_avg_values.get)
+    max_avg_cluster = max(cluster_avg_values, key=cluster_avg_values.get)
+    if cluster_avg_values[min_avg_cluster] > (
+        0.30 * cluster_avg_values[max_avg_cluster]
+    ):
+        print("cluster adjust boolformer")
+        min_avg_cluster = -1
     return min_avg_cluster
+
 
 def generateInputs(RunnerObj):
     """
@@ -50,24 +60,41 @@ def generateInputs(RunnerObj):
     ExpressionData = pd.read_csv(
         RunnerObj.inputDir.joinpath(RunnerObj.exprData), header=0, index_col=0
     )
-    ExpressionData = ExpressionData[:130]
-    #print(ExpressionData.std(axis="columns"))
-    # Convert input expression to boolean
-    # If  the gene's expression value is >= it's avg. expression across cells
-    # it receieves a "True", else "False"\
-    #BinExpression = ExpressionData.T >= ExpressionData.mean(
-    #    axis="columns"
-    #  + ExpressionData.std(axis="columns")
-    
-    #The following three lines were created with the help of generative AI tools
-    ClusteredData =  ExpressionData.apply(lambda row: kmeans_cluster(row.values, 2), axis=1, result_type='broadcast')
-    min_avg_clusters = ExpressionData.apply(lambda row: get_min_avg_cluster(row, ClusteredData.loc[row.name]), axis=1)
-    BinExpression = ClusteredData != min_avg_clusters[:, np.newaxis]
-    
-    
-    #BinExpression = ExpressionData.apply(find_lowest_avg_cluster, axis=1).T
-    # Write unique cells x genes output to a file 
-    BinExpression.T.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
+    # ExpressionData = ExpressionData[:130]
+
+    PTData = pd.read_csv(
+        RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
+    )
+
+    colNames = PTData.columns
+    for idx, name in enumerate(colNames):
+        # Select cells belonging to each pseudotime trajectory
+        colName = colNames[idx]
+        index = PTData[colName].index[PTData[colName].notnull()]
+        exprName = "Boolformer/ExpressionData" + str(idx) + ".csv"
+        subPT = PTData.loc[index, :]
+        subExpr = ExpressionData[index]
+        newExpressionData = subExpr[subPT.sort_values([colName]).index.astype(str)]
+        # newExpressionData.insert(loc = 0, column = 'GENES', \
+        #                                             value = newExpressionData.index)
+
+        # newExpressionData.insert(loc=0, column="GENES", value=newExpressionData.index)
+        # The following three lines were created with the help of generative AI tools
+        ClusteredData = newExpressionData.apply(
+            lambda row: kmeans_cluster(row.values, 3), axis=1, result_type="broadcast"
+        )
+        min_avg_clusters = newExpressionData.apply(
+            lambda row: get_min_avg_cluster(row, ClusteredData.loc[row.name]), axis=1
+        )
+        BinExpression = ClusteredData != min_avg_clusters[:, np.newaxis]
+
+        BinExpression.T.to_csv(
+            RunnerObj.inputDir.joinpath(exprName), sep=",", header=True, index=True
+        )
+        # BinExpression.T.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
+
+    # BinExpression = ExpressionData.apply(find_lowest_avg_cluster, axis=1).T
+    # Write unique cells x genes output to a file
 
 
 def run(RunnerObj):
@@ -76,7 +103,6 @@ def run(RunnerObj):
 
     :param RunnerObj: An instance of the :class:`BLRun`
     """
-    print(os.getcwd())
     inputPath = (
         "/home/cameron/repos/Beeline_boolformer"
         + str(RunnerObj.inputDir).split(str(Path.cwd()))[1]
@@ -90,25 +116,43 @@ def run(RunnerObj):
         + "/Boolformer/"
     )
     os.makedirs(outDir, exist_ok=True)
-
-    outPath = str(outDir) + "outFile.txt"
-    timePath = str(outDir) + "time.txt"
-    outPathDynamics = str(outDir) + "outDynamics.txt"
-    boolformer_model = load_boolformer("noisy")
-
-    boolformer_model.cuda()
-    boolformer_model.embedder.params.cpu = False
-    boolformer_model.eval()
-    run_grn(
-        boolformer_model,
-        inputPath,
-        outPath,
-        outPathDynamics,
-        timePath,
-        beam_size=int(RunnerObj.params.get("beam_size", 5)),
-        max_points=int(RunnerObj.params.get("max_points", 1000)),
-        batch_size=int(RunnerObj.params.get("batch_size", 4)),
+    PTData = pd.read_csv(
+        RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
     )
+
+    boolformer_model = load_boolformer("noisy")
+    start = time.time()
+    colNames = PTData.columns
+    for idx in range(len(colNames)):
+        exprName = (
+            "/home/cameron/repos/Beeline_boolformer"
+            + str(RunnerObj.inputDir).split(str(Path.cwd()))[1]
+            + "/Boolformer/ExpressionData"
+            + str(idx)
+            + ".csv"
+        )
+        outPath = str(outDir) + "outFile" + str(idx) + ".txt"
+        outPathDynamics = str(outDir) + "outDynamics" + str(idx) + ".txt"
+
+        boolformer_model.cuda()
+        boolformer_model.embedder.params.cpu = False
+        boolformer_model.eval()
+        run_grn(
+            boolformer_model,
+            exprName,
+            outPath,
+            outPathDynamics,
+            beam_size=int(RunnerObj.params.get("beam_size", 5)),
+            max_points=int(RunnerObj.params.get("max_points", 1000)),
+            batch_size=int(RunnerObj.params.get("batch_size", 4)),
+        )
+
+    timePath = str(outDir) + "time.txt"
+    time_file = open(timePath, "w")
+    end = time.time()
+    elapsed = end - start
+    time_file.write("\n" + str(elapsed))
+    time_file.close()
 
 
 def parseOutput(RunnerObj):
@@ -120,17 +164,34 @@ def parseOutput(RunnerObj):
     # Quit if output directory does not exist
     outDir = "outputs/" + str(RunnerObj.inputDir).split("inputs/")[1] + "/Boolformer/"
 
-    # Read output
-    OutDF = pd.read_csv(outDir + "outFile.txt", sep="\t", header=0)
+    PTData = pd.read_csv(
+        RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
+    )
 
-    if not Path(outDir + "outFile.txt").exists():
-        print(outDir + "outFile.txt" + "does not exist, skipping...")
-        return
+    colNames = PTData.columns
+    OutSubDF = [0] * len(colNames)
+
+    for indx in range(len(colNames)):
+        outFileName = "outFile" + str(indx) + ".txt"
+        # Quit if output file does not exist
+        if not Path(outDir + outFileName).exists():
+            print(outDir + outFileName + " does not exist, skipping...")
+            return
+
+        # Read output
+        OutSubDF[indx] = pd.read_csv(outDir + outFileName, sep="\t", header=0)
+    outDF = pd.concat(OutSubDF)
+    FinalDF = outDF[
+        outDF["importance"]
+        == outDF.groupby(["TF", "target"])["importance"].transform("max")
+    ]
+    FinalDF.drop_duplicates(inplace=True)
+    # Read output
 
     outFile = open(outDir + "rankedEdges.csv", "w")
     outFile.write("Gene1" + "\t" + "Gene2" + "\t" + "EdgeWeight" + "\n")
 
-    for idx, row in OutDF.iterrows():
+    for idx, row in FinalDF.iterrows():
         outFile.write(
             "\t".join([row["TF"], row["target"], str(row["importance"])]) + "\n"
         )
@@ -142,7 +203,6 @@ def run_grn(
     inputPath,
     outPath,
     outPathDynamics,
-    timePath,
     max_points=1000,
     beam_size=1,
     batch_size=4,
@@ -158,16 +218,16 @@ def run_grn(
     variable_counts = defaultdict(int)
 
     n_vars = len(df.columns)
-    print(f"{n_vars}")
+    # print(f"{n_vars}")
     num_datasets = n_vars
     num_batches = num_datasets // batch_size
-    print(f"{num_batches}")
-    start = time.time()
+    # print(f"{num_batches}")
+
     pred_trees, error_arr, complexity_arr = [], [], []
 
     for batch in range(num_batches):
         inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
-
+        print(inputs_.shape)
         outputs_ = np.array(
             [
                 inputs_[var - batch * batch_size, 1:, var]
@@ -176,7 +236,7 @@ def run_grn(
                 )
             ]
         )
-        print(outputs_.shape)
+        # print(outputs_.shape)
         for var in range(batch * batch_size, min((batch + 1) * batch_size, n_vars)):
             inputs_[var - batch * batch_size, :, var] = np.random.choice(
                 [0, 1],
@@ -186,12 +246,14 @@ def run_grn(
         inputs_ = inputs_[:, :-1, :]
         if max_points is not None:
             inputs_, outputs_ = inputs_[:, :max_points, :], outputs_[:, :max_points]
-        print(inputs_.shape)
+        # print(inputs_.shape)
         pred_trees_, error_arr_, complexity_arr_ = model.fit(
             inputs_,
             outputs_,
             verbose=False,
             beam_size=beam_size,
+            # beam_temperature=0.0005,
+            beam_temperature=0.5,
             sort_by=sort_by,
         )
         pred_trees.extend(pred_trees_), error_arr.extend(
@@ -200,11 +262,6 @@ def run_grn(
     print(error_arr)
     dynamics_file = open(outPathDynamics, "w")
     structure_file = open(outPath, "w")
-    time_file = open(timePath, "w")
-    end = time.time()
-    elapsed = end - start
-    time_file.write("\n" + str(elapsed))
-    time_file.close()
     structure_file.write("\t".join(["TF", "target", "importance"]))
     print(len(pred_trees))
     for idx, pred_tree in enumerate(pred_trees):
@@ -216,6 +273,9 @@ def run_grn(
             variable_counts[var] += 1
         line = f"{genes[idx]} = {pred_tree.infix()}"
         line = line.replace("and", "&").replace("or", "||").replace("not", "!")
+        for var in used_variables:
+            print(var)
+            line = line.replace(var, genes[int(var.split("_")[1]) - 1])
         line += "\n"
         dynamics_file.write(line)
         for var in used_variables:
@@ -228,5 +288,3 @@ def run_grn(
 
     # print top 10 variables sorted by count
     print(sorted(variable_counts.items(), key=lambda x: -x[1])[:10])
-
-
