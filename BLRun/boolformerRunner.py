@@ -15,6 +15,7 @@ from boolformer import load_boolformer
 import numpy as np
 import torch
 from sklearn.cluster import KMeans
+import random
 
 
 # Boolformer code adaption of https://github.com/sdascoli/boolformer/blob/main/scripts/evaluate_on_grn.py
@@ -24,7 +25,24 @@ from sklearn.cluster import KMeans
 def kmeans_cluster(row_values, num_clusters):
     kmeans = KMeans(n_clusters=num_clusters, random_state=42)
     kmeans.fit(row_values.reshape(-1, 1))
-    return kmeans.labels_
+    cluster_labels = kmeans.labels_
+    
+    cluster_avg_values = {}
+
+    for cluster_label in np.unique(cluster_labels):
+        cluster_avg_values[cluster_label] = np.mean(row_values[cluster_labels == cluster_label])
+
+    min_avg_cluster = min(cluster_avg_values, key=cluster_avg_values.get)
+    max_avg_cluster = max(cluster_avg_values, key=cluster_avg_values.get)
+    if cluster_avg_values[min_avg_cluster] > (
+        0.20 * cluster_avg_values[max_avg_cluster]
+    ):
+        print("cluster adjust boolformer correct")
+        if (min(row_values) < 0.45):
+            min_avg_cluster = -1
+            cluster_labels = [-1 if val < 0.45 else 1 for val in list(row_values)]
+    
+    return cluster_labels
 
 
 def get_min_avg_cluster(row, clusters):
@@ -38,7 +56,7 @@ def get_min_avg_cluster(row, clusters):
     if cluster_avg_values[min_avg_cluster] > (
         0.30 * cluster_avg_values[max_avg_cluster]
     ):
-        print("cluster adjust boolformer")
+        print("cluster adjust boolformer shouldnt happen")
         min_avg_cluster = -1
     return min_avg_cluster
 
@@ -67,30 +85,47 @@ def generateInputs(RunnerObj):
     )
 
     colNames = PTData.columns
+    dfs = []
     for idx, name in enumerate(colNames):
         # Select cells belonging to each pseudotime trajectory
         colName = colNames[idx]
         index = PTData[colName].index[PTData[colName].notnull()]
-        exprName = "Boolformer/ExpressionData" + str(idx) + ".csv"
+        
         subPT = PTData.loc[index, :]
         subExpr = ExpressionData[index]
         newExpressionData = subExpr[subPT.sort_values([colName]).index.astype(str)]
+        dfs.append(newExpressionData)
         # newExpressionData.insert(loc = 0, column = 'GENES', \
         #                                             value = newExpressionData.index)
 
         # newExpressionData.insert(loc=0, column="GENES", value=newExpressionData.index)
-        # The following three lines were created with the help of generative AI tools
-        ClusteredData = newExpressionData.apply(
-            lambda row: kmeans_cluster(row.values, 3), axis=1, result_type="broadcast"
-        )
-        min_avg_clusters = newExpressionData.apply(
-            lambda row: get_min_avg_cluster(row, ClusteredData.loc[row.name]), axis=1
-        )
-        BinExpression = ClusteredData != min_avg_clusters[:, np.newaxis]
+    exprName = "Boolformer/ExpressionData" + ".csv"        
+    
+    exprName_save = "Boolformer/ExpressionData_real" + ".csv"
+    
+    
+    orderedExpressionData = pd.concat(dfs, axis = 1)
+    orderedExpressionData.T.to_csv(
+        RunnerObj.inputDir.joinpath(exprName_save), sep=",", header=True, index=True
+    )
+    
+    
+    # The following three lines were created with the help of generative AI tools
+    ClusteredData = orderedExpressionData.apply(
+        lambda row: kmeans_cluster(row.values, 3), axis=1, result_type="broadcast"
+    )
+    min_avg_clusters = orderedExpressionData.apply(
+        lambda row: get_min_avg_cluster(row, ClusteredData.loc[row.name]), axis=1
+    )
+    print()
+    BinExpression = ClusteredData != min_avg_clusters[:, np.newaxis]
+    #BinExpression = orderedExpressionData >= 0.50
+    #BinExpression.drop_duplicates(inplace=True)
 
-        BinExpression.T.to_csv(
-            RunnerObj.inputDir.joinpath(exprName), sep=",", header=True, index=True
-        )
+
+    BinExpression.T.to_csv(
+        RunnerObj.inputDir.joinpath(exprName), sep=",", header=True, index=True
+    )
         # BinExpression.T.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
 
     # BinExpression = ExpressionData.apply(find_lowest_avg_cluster, axis=1).T
@@ -122,30 +157,22 @@ def run(RunnerObj):
 
     boolformer_model = load_boolformer("noisy")
     start = time.time()
-    colNames = PTData.columns
-    for idx in range(len(colNames)):
-        exprName = (
-            "/home/cameron/repos/Beeline_boolformer"
-            + str(RunnerObj.inputDir).split(str(Path.cwd()))[1]
-            + "/Boolformer/ExpressionData"
-            + str(idx)
-            + ".csv"
-        )
-        outPath = str(outDir) + "outFile" + str(idx) + ".txt"
-        outPathDynamics = str(outDir) + "outDynamics" + str(idx) + ".txt"
+    outPath = str(outDir) + "outFile" + ".txt"
+    outPathDynamics = str(outDir) + "outDynamics" + ".txt"
 
-        boolformer_model.cuda()
-        boolformer_model.embedder.params.cpu = False
-        boolformer_model.eval()
-        run_grn(
-            boolformer_model,
-            exprName,
-            outPath,
-            outPathDynamics,
-            beam_size=int(RunnerObj.params.get("beam_size", 5)),
-            max_points=int(RunnerObj.params.get("max_points", 1000)),
-            batch_size=int(RunnerObj.params.get("batch_size", 4)),
-        )
+    boolformer_model.cuda()
+    boolformer_model.embedder.params.cpu = False
+    boolformer_model.eval()
+    run_grn(
+        boolformer_model,
+        inputPath,
+        outPath,
+        outPathDynamics,
+        PTData,
+        beam_size=int(RunnerObj.params.get("beam_size", 5)),
+        max_points=int(RunnerObj.params.get("max_points", 1000)),
+        batch_size=int(RunnerObj.params.get("batch_size", 4)),
+    )
 
     timePath = str(outDir) + "time.txt"
     time_file = open(timePath, "w")
@@ -169,18 +196,10 @@ def parseOutput(RunnerObj):
     )
 
     colNames = PTData.columns
-    OutSubDF = [0] * len(colNames)
 
-    for indx in range(len(colNames)):
-        outFileName = "outFile" + str(indx) + ".txt"
-        # Quit if output file does not exist
-        if not Path(outDir + outFileName).exists():
-            print(outDir + outFileName + " does not exist, skipping...")
-            return
+    outFileName = "outFile" + ".txt"
 
-        # Read output
-        OutSubDF[indx] = pd.read_csv(outDir + outFileName, sep="\t", header=0)
-    outDF = pd.concat(OutSubDF)
+    outDF = pd.read_csv(outDir + outFileName, sep="\t", header=0)
     FinalDF = outDF[
         outDF["importance"]
         == outDF.groupby(["TF", "target"])["importance"].transform("max")
@@ -203,6 +222,7 @@ def run_grn(
     inputPath,
     outPath,
     outPathDynamics,
+    pseudotimeData,
     max_points=1000,
     beam_size=1,
     batch_size=4,
@@ -224,13 +244,95 @@ def run_grn(
     # print(f"{num_batches}")
 
     pred_trees, error_arr, complexity_arr = [], [], []
+    
+    colNames = pseudotimeData.columns
+    pseudotimes_list = []
+    for idx, name in enumerate(colNames):
+        # Select cells belonging to each pseudotime trajectory
+        colName = colNames[idx]
+        index = pseudotimeData[colName].index[pseudotimeData[colName].notnull()]
+        
+        subPT = pseudotimeData.loc[index, :]
+        pseudotimes_list.extend(list(subPT.sort_values([colName])[colName].values))
 
+    #print(subPT.sort_values([colName]))
+    #print(pseudotimes_list)    
+    
+    next_list = []  
+          
+    for i in range(rows-1):
+        #val = random.uniform(0, 1)
+        if i+5 >= rows:
+            start = i+1
+        else:
+            start = i+5   
+        #start = i + 1    
+        for j in range(start,rows):
+            if pseudotimes_list[i] < pseudotimes_list[j]:
+                next_list.append(j)
+                break
+            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
+                next_list.append(i)
+                break  
+       
+    last_j= -1
+    last_change = []
+    for i in range(rows-1):               
+        for j in range(i+1,rows):
+            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
+                next_list.append(i)  
+                break      
+            elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):     
+                difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()                 
+                if i == last_j:                    
+                    if difference == last_change:                    
+                        continue   
+                elif i < last_j:
+                    next_list.append(last_j)
+                    break                 
+                next_list.append(j)
+                last_change = difference
+                last_j = j
+                break      
+    for i,change in enumerate(next_list):
+        print(i,change)
+        
+    
+         
+    '''         
+    counter = 0
+    last_difference = []    
+    last_j = -1
+    for i in range(rows-1):               
+        for j in range(i+1,rows):
+            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
+                next_list.append(i)  
+                break      
+            elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):
+                difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()
+                #print(df.values[None, i, :], df.values[None, j, :])
+                #print(difference)
+                #if difference != last_difference:
+                    #
+                if i == last_j:
+                    if difference == last_difference:                    
+                        continue
+                    
+                next_list.append(j)  
+                last_j = j   
+                last_difference = difference                               
+                break      
+    ''' 
+    df_new = pd.concat([df.iloc[:-1],df])
+    print(df_new.shape)
     for batch in range(num_batches):
-        inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
-        print(inputs_.shape)
+        
+        inputs_ = df_new.values[None, :, :].repeat(batch_size, axis=0)
+        #inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
+        #print(inputs_.shape)
         outputs_ = np.array(
             [
-                inputs_[var - batch * batch_size, 1:, var]
+                inputs_[var - batch * batch_size, next_list, var]
                 for var in range(
                     batch * batch_size, min((batch + 1) * batch_size, n_vars)
                 )
@@ -244,6 +346,8 @@ def run_grn(
                 p=[0.5, 0.5],
             )
         inputs_ = inputs_[:, :-1, :]
+
+        
         if max_points is not None:
             inputs_, outputs_ = inputs_[:, :max_points, :], outputs_[:, :max_points]
         # print(inputs_.shape)
@@ -273,12 +377,17 @@ def run_grn(
             variable_counts[var] += 1
         line = f"{genes[idx]} = {pred_tree.infix()}"
         line = line.replace("and", "&").replace("or", "||").replace("not", "!")
-        for var in used_variables:
-            print(var)
+        #print( list(used_variables))
+        #print( list(genes))
+        used_variables = list(used_variables)
+        used_variables.sort()
+        for var in used_variables[:len(genes)]:
+            print(int(var.split("_")[1]) - 1)
             line = line.replace(var, genes[int(var.split("_")[1]) - 1])
         line += "\n"
         dynamics_file.write(line)
-        for var in used_variables:
+        
+        for var in used_variables[:len(genes)]:
             var_idx = int(var.split("_")[-1])
             influence = f"{genes[idx]} <- {genes[var_idx-1]}" + "\n"
             structure_file.write(
