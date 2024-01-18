@@ -27,6 +27,7 @@ def kmeans_cluster(row_values, num_clusters):
     kmeans.fit(row_values.reshape(-1, 1))
     cluster_labels = kmeans.labels_
     
+    
     cluster_avg_values = {}
 
     for cluster_label in np.unique(cluster_labels):
@@ -94,11 +95,10 @@ def generateInputs(RunnerObj):
         subPT = PTData.loc[index, :]
         subExpr = ExpressionData[index]
         newExpressionData = subExpr[subPT.sort_values([colName]).index.astype(str)]
-        dfs.append(newExpressionData)
-        # newExpressionData.insert(loc = 0, column = 'GENES', \
-        #                                             value = newExpressionData.index)
+        #result = newExpressionData.rolling(window=5, axis=1, min_periods=1).mean()
 
-        # newExpressionData.insert(loc=0, column="GENES", value=newExpressionData.index)
+        dfs.append(newExpressionData)
+
     exprName = "Boolformer/ExpressionData" + ".csv"        
     
     exprName_save = "Boolformer/ExpressionData_real" + ".csv"
@@ -172,6 +172,7 @@ def run(RunnerObj):
         beam_size=int(RunnerObj.params.get("beam_size", 5)),
         max_points=int(RunnerObj.params.get("max_points", 1000)),
         batch_size=int(RunnerObj.params.get("batch_size", 4)),
+        repeats=int(RunnerObj.params.get("repeats", 1))
     )
 
     timePath = str(outDir) + "time.txt"
@@ -226,6 +227,7 @@ def run_grn(
     max_points=1000,
     beam_size=1,
     batch_size=4,
+    repeats=1,
     sort_by="error",
 ):
     df = pd.read_csv(inputPath, header=0)
@@ -243,7 +245,7 @@ def run_grn(
     num_batches = num_datasets // batch_size
     # print(f"{num_batches}")
 
-    pred_trees, error_arr, complexity_arr = [], [], []
+    #pred_trees, error_arr, complexity_arr = [], [], []
     
     colNames = pseudotimeData.columns
     pseudotimes_list = []
@@ -258,111 +260,139 @@ def run_grn(
     #print(subPT.sort_values([colName]))
     #print(pseudotimes_list)    
     
-    next_list = []  
-          
+    #next_lists = [[] for _ in range(n_vars)]  
+    next_list = []
+    #for gene in range(n_vars):
     for i in range(rows-1):
         #val = random.uniform(0, 1)
-        if i+5 >= rows:
+        if i+1 >= rows:
             start = i+1
         else:
-            start = i+5   
+            start = i+1
         #start = i + 1    
         for j in range(start,rows):
             if pseudotimes_list[i] < pseudotimes_list[j]:
+                #next_lists[gene].append(j)
                 next_list.append(j)
                 break
             if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
                 next_list.append(i)
                 break  
-       
-    last_j= -1
-    last_change = []
-    for i in range(rows-1):               
-        for j in range(i+1,rows):
-            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
-                next_list.append(i)  
-                break      
-            elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):     
-                difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()                 
-                if i == last_j:                    
-                    if difference == last_change:                    
-                        continue   
-                elif i < last_j:
-                    next_list.append(last_j)
-                    break                 
-                next_list.append(j)
-                last_change = difference
-                last_j = j
-                break      
-    for i,change in enumerate(next_list):
-        print(i,change)
-        
-    
-         
-    '''         
-    counter = 0
-    last_difference = []    
-    last_j = -1
-    for i in range(rows-1):               
-        for j in range(i+1,rows):
-            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
-                next_list.append(i)  
-                break      
-            elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):
-                difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()
-                #print(df.values[None, i, :], df.values[None, j, :])
-                #print(difference)
-                #if difference != last_difference:
-                    #
-                if i == last_j:
-                    if difference == last_difference:                    
-                        continue
-                    
-                next_list.append(j)  
-                last_j = j   
-                last_difference = difference                               
-                break      
-    ''' 
-    df_new = pd.concat([df.iloc[:-1],df])
-    print(df_new.shape)
-    for batch in range(num_batches):
-        
-        inputs_ = df_new.values[None, :, :].repeat(batch_size, axis=0)
-        #inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
-        #print(inputs_.shape)
-        outputs_ = np.array(
-            [
-                inputs_[var - batch * batch_size, next_list, var]
-                for var in range(
-                    batch * batch_size, min((batch + 1) * batch_size, n_vars)
-                )
-            ]
-        )
-        # print(outputs_.shape)
-        for var in range(batch * batch_size, min((batch + 1) * batch_size, n_vars)):
-            inputs_[var - batch * batch_size, :, var] = np.random.choice(
-                [0, 1],
-                size=inputs_[var - batch * batch_size, :, var].shape,
-                p=[0.5, 0.5],
-            )
-        inputs_ = inputs_[:, :-1, :]
+    # for i in range(rows-1):
+    #     skip = random.randint(0, 20)
+    #     if i+skip >= rows:
+    #         start = i+1
+    #     else:
+    #         start = i+skip
+    #     for j in range(start,rows):
+    #         if pseudotimes_list[i] < pseudotimes_list[j]:
+    #             #next_lists[gene].append(j)
+    #             next_list.append(j)
+    #             break
+    #         if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
+    #             next_list.append(i)
+    #             break              
 
+
+    '''
+    For every cell, for a given target gene
+    
+    set the output for the cell to the target value at 
+        - The next change in target value if within 0.1 psuedotime but beyond 0.005
+        - The current target value otherwise
+    
+    
+
+    for gene in range(n_vars):
+        for i in range(rows-1):      
+            for j in range(i+1,rows):
+                if (pseudotimes_list[j] > pseudotimes_list[i] + 0.05) or (pseudotimes_list[j] < pseudotimes_list[i]):
+                    next_lists[gene].append(i+1)
+                    break                
+                if df.values[None, i, gene] != df.values[None, j, gene] and (pseudotimes_list[j] > pseudotimes_list[i] + 0.01):
+                    next_lists[gene].append(j)
+                    break                
+                if j == rows-1:
+                    next_lists[gene].append(i+1)                    
+                    break
+    '''
+         
+    # last_j= -1
+    # last_change = []
+    # for i in range(rows-1):               
+    #     for j in range(i+1,rows):
+    #         if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
+    #             next_list.append(i)  
+    #             break      
+    #         elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):     
+    #             difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()                 
+    #             if i == last_j:                    
+    #                 if difference == last_change:                    
+    #                     continue   
+    #             elif i < last_j:
+    #                 next_list.append(last_j)
+    #                 break                 
+    #             next_list.append(j)
+    #             last_change = difference
+    #             last_j = j
+    #             break       
+    
+
+            
+            
+    #for i,change in enumerate(next_lists[2][1999:2999]):
+    #    print(i,change)
         
-        if max_points is not None:
-            inputs_, outputs_ = inputs_[:, :max_points, :], outputs_[:, :max_points]
-        # print(inputs_.shape)
-        pred_trees_, error_arr_, complexity_arr_ = model.fit(
-            inputs_,
-            outputs_,
-            verbose=False,
-            beam_size=beam_size,
-            # beam_temperature=0.0005,
-            beam_temperature=0.5,
-            sort_by=sort_by,
-        )
-        pred_trees.extend(pred_trees_), error_arr.extend(
-            error_arr_
-        ), complexity_arr.extend(complexity_arr_)
+      
+
+    #df_new = pd.concat([df.iloc[:-1],df])
+    #print(df_new.shape)
+    pred_trees_many = []
+    for i in range(repeats):
+        pred_trees, error_arr, complexity_arr = [], [], []
+        for batch in range(num_batches):
+            
+            #inputs_ = df_new.values[None, :, :].repeat(batch_size, axis=0)
+            inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
+            #print(inputs_.shape)
+            outputs_ = np.array(
+                [
+                    #inputs_[var - batch * batch_size, next_lists[var], var]
+                    inputs_[var - batch * batch_size, next_list, var]
+                    for var in range(
+                        batch * batch_size, min((batch + 1) * batch_size, n_vars)
+                    )
+                ]
+            )
+            # print(outputs_.shape
+
+            for var in range(batch * batch_size, min((batch + 1) * batch_size, n_vars)):
+                inputs_[var - batch * batch_size, :, var] = np.random.choice(
+                    [0, 1],
+                    size=inputs_[var - batch * batch_size, :, var].shape,
+                    p=[0.5, 0.5],
+                )
+            inputs_ = inputs_[:, :-1, :]
+
+            
+            if max_points is not None:
+                inputs_, outputs_ = inputs_[:, :max_points, :], outputs_[:, :max_points]
+            # print(inputs_.shape)
+            pred_trees_, error_arr_, complexity_arr_ = model.fit(
+                inputs_,
+                outputs_,
+                verbose=False,
+                beam_size=beam_size,
+                # beam_temperature=0.0005,
+                beam_temperature=0.5,
+                sort_by=sort_by,
+            )
+                
+            pred_trees.extend(pred_trees_), error_arr.extend(
+                error_arr_
+            ), complexity_arr.extend(complexity_arr_)
+        pred_trees_many.append(pred_trees)
+        
     print(error_arr)
     dynamics_file = open(outPathDynamics, "w")
     structure_file = open(outPath, "w")
@@ -381,18 +411,38 @@ def run_grn(
         #print( list(genes))
         used_variables = list(used_variables)
         used_variables.sort()
-        for var in used_variables[:len(genes)]:
-            print(int(var.split("_")[1]) - 1)
-            line = line.replace(var, genes[int(var.split("_")[1]) - 1])
+        for var in used_variables:
+            index = int(var.split("_")[1]) - 1
+            if len(genes) <= index:
+                continue 
+            line = line.replace(var, genes[index])
         line += "\n"
+        pred_tree.decrement_variables()
         dynamics_file.write(line)
-        
-        for var in used_variables[:len(genes)]:
-            var_idx = int(var.split("_")[-1])
-            influence = f"{genes[idx]} <- {genes[var_idx-1]}" + "\n"
+    
+    count_dict = {gene : {gene_inner : 0 for gene_inner in genes} for gene in genes}
+    for i in range(repeats):
+        pred_trees = pred_trees_many[i]
+        for idx, pred_tree in enumerate(pred_trees):
+            if not pred_tree:
+                continue            
+            pred_tree.increment_variables()
+            used_variables = pred_tree.get_variables()
+            used_variables = list(used_variables)
+            used_variables.sort()                        
+            for var in used_variables:
+                index = int(var.split("_")[1]) - 1
+                if len(genes) <= index:
+                    continue                 
+                count_dict[genes[idx]][genes[index]] += 1
+    print(count_dict)
+    for gene in genes:
+        for gene_inner in genes:
             structure_file.write(
-                "\n" + "\t".join([genes[var_idx - 1], genes[idx], str(1)])
+                "\n" + "\t".join([gene_inner, gene, str(count_dict[gene][gene_inner]/repeats)])
             )
+                
+    
             # structure_file.write(influence)
 
     # print top 10 variables sorted by count
