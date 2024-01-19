@@ -16,7 +16,6 @@ import numpy as np
 import torch
 from sklearn.cluster import KMeans
 import random
-from random import shuffle
 
 
 # Boolformer code adaption of https://github.com/sdascoli/boolformer/blob/main/scripts/evaluate_on_grn.py
@@ -362,21 +361,24 @@ def run_grn(
     for i in range(repeats):
         pred_trees, error_arr, complexity_arr = [], [], []
         for batch in range(num_batches):
-            x = [i for i in range(df.shape[0]-1)]
-            shuffle(x)
+            
             #inputs_ = df_new.values[None, :, :].repeat(batch_size, axis=0)
-            inputs_ = df.iloc[x].values[None, :, :].repeat(batch_size, axis=0)
-            inputs_unshuffled = df.values[None, :, :].repeat(batch_size, axis=0)
+            inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
             #print(inputs_.shape)
             outputs_ = np.array(
                 [
                     #inputs_[var - batch * batch_size, next_lists[var], var]
-                    inputs_unshuffled[var - batch * batch_size, [next_list[index] for index in x], var]
+                    inputs_[var - batch * batch_size, next_list, var]
                     for var in range(
                         batch * batch_size, min((batch + 1) * batch_size, n_vars)
                     )
                 ]
             )
+            
+            #inputs_ = np.array([np.squeeze(df.drop(df.columns[[num]],axis=1).values[None, :, :],axis=0) for num in range(batch * batch_size, min((batch + 1) * batch_size, n_vars))])
+            
+            
+            
             # print(outputs_.shape
 
             for var in range(batch * batch_size, min((batch + 1) * batch_size, n_vars)):
@@ -385,7 +387,7 @@ def run_grn(
                     size=inputs_[var - batch * batch_size, :, var].shape,
                     p=[0.5, 0.5],
                 )
-            #inputs_ = inputs_[:, :-1, :]
+            inputs_ = inputs_[:, :-1, :]
 
             
             if max_points is not None:
@@ -397,7 +399,8 @@ def run_grn(
                 verbose=False,
                 beam_size=beam_size,
                 # beam_temperature=0.0005,
-                beam_temperature=0.5,
+                beam_temperature=0.9,
+                beam_type="sampling",
                 sort_by=sort_by,
             )
                 
@@ -426,6 +429,8 @@ def run_grn(
         used_variables.sort()
         for var in used_variables:
             index = int(var.split("_")[1]) - 1
+            #if index >= idx:
+            #    index = index+1
             if len(genes) <= index:
                 continue 
             line = line.replace(var, genes[index])
@@ -445,6 +450,8 @@ def run_grn(
             used_variables.sort()                        
             for var in used_variables:
                 index = int(var.split("_")[1]) - 1
+                #if index >= idx:
+                #    index = index+1                
                 if len(genes) <= index:
                     continue                 
                 count_dict[genes[idx]][genes[index]] += 1
