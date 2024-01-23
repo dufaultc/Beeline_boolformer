@@ -1,10 +1,9 @@
 import os
-import re
+import random
 import pandas as pd
 from pathlib import Path
 import numpy as np
 import numpy as np
-import argparse
 from collections import defaultdict
 import os
 import time
@@ -13,9 +12,7 @@ import pandas as pd
 from boolformer import load_boolformer
 
 import numpy as np
-import torch
 from sklearn.cluster import KMeans
-import random
 from random import shuffle
 
 
@@ -23,47 +20,56 @@ from random import shuffle
 
 
 # The following two methods kmeans_cluster and get_min_avg_cluster were created with the help of generative AI tools
-def kmeans_cluster(row_values, num_clusters):
-    kmeans = KMeans(n_clusters=num_clusters,random_state=42)
+def kmeans_cluster(row_values, num_clusters, largest_zero=0.5):
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
     kmeans.fit(row_values.reshape(-1, 1))
     cluster_labels = kmeans.labels_
-    
-    
+
+    # We dont want high values in minimum cluster to be set to 0,
+    # so all those above largest_zero put in their own category
     cluster_avg_values = {}
-
     for cluster_label in np.unique(cluster_labels):
-        cluster_avg_values[cluster_label] = np.mean(row_values[cluster_labels == cluster_label])
-
+        cluster_avg_values[cluster_label] = np.mean(
+            row_values[cluster_labels == cluster_label]
+        )
     min_avg_cluster = min(cluster_avg_values, key=cluster_avg_values.get)
-    max_avg_cluster = max(cluster_avg_values, key=cluster_avg_values.get)
-    # if cluster_avg_values[min_avg_cluster] > (
-    #     0.20 * cluster_avg_values[max_avg_cluster]
-    # ):
-    #     print("cluster adjust boolformer correct")
-    #     if (min(row_values) < 0.45):
-    #         min_avg_cluster = -1
-    #         cluster_labels = [-1 if val < 0.45 else 1 for val in list(row_values)]
-    for i,val in enumerate(list(row_values)):
+
+    for i, val in enumerate(list(row_values)):
         if cluster_labels[i] == min_avg_cluster:
-            if val > 0.5:
+            if val > largest_zero:
                 cluster_labels[i] == -1
-    
+
+    # If average of max cluster is below largest_zero, should
+    # have all clusters be the same so all get binarized to zero
+    max_avg_cluster = max(cluster_avg_values, key=cluster_avg_values.get)
+    if cluster_avg_values[max_avg_cluster] < largest_zero:
+        for i, val in enumerate(list(row_values)):
+            cluster_labels[i] == 1
+
     return cluster_labels
 
 
-def get_min_avg_cluster(row, clusters):
+def get_min_avg_cluster(row, clusters, min_to_max_cutoff=0.3):
     cluster_avg_values = {}
-
     for cluster_label in clusters.unique():
         cluster_avg_values[cluster_label] = np.mean(row[clusters == cluster_label])
 
     min_avg_cluster = min(cluster_avg_values, key=cluster_avg_values.get)
     max_avg_cluster = max(cluster_avg_values, key=cluster_avg_values.get)
+
+    # If all cluster averages are low, every value binarized to 0
+    if min_avg_cluster == max_avg_cluster:
+        print("All 0")
+        return max_avg_cluster
+
+    # If the average of the minimum cluster is above
+    # min_to_max_cutoff, we have no zeros, since -2 maps to no values
     if cluster_avg_values[min_avg_cluster] > (
-        0.30 * cluster_avg_values[max_avg_cluster]
+        min_to_max_cutoff * cluster_avg_values[max_avg_cluster]
     ):
-        print("cluster adjust boolformer shouldnt happen")
         min_avg_cluster = -2
+        print("All 1")
+
     return min_avg_cluster
 
 
@@ -71,7 +77,7 @@ def generateInputs(RunnerObj):
     """
     Function to generate desired inputs for Boolformer.
     If the folder/files under RunnerObj.datadir exist,
-    this function will not do anything.
+    this function will overwrite them.
 
     :param RunnerObj: An instance of the :class:`BLRun`
     """
@@ -79,68 +85,69 @@ def generateInputs(RunnerObj):
         print("Input folder for Boolformer does not exist, creating input folder...")
         RunnerObj.inputDir.joinpath("Boolformer").mkdir(exist_ok=False)
 
-    # if not RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv").exists():
-    # input data
+    # input gene expression data
     ExpressionData = pd.read_csv(
         RunnerObj.inputDir.joinpath(RunnerObj.exprData), header=0, index_col=0
     )
-    # ExpressionData = ExpressionData[:130]
 
-    PTData = pd.read_csv(
-        RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
-    )
+    # Boolformer can only consider up to 130 genes at a time
+    max_genes = int(RunnerObj.params.get("max_genes", 130))
+    if ExpressionData.shape[0] > max_genes:
+        print(f"Too many genes, taking first {max_genes}")
+        ExpressionData = ExpressionData[:max_genes]
 
-    colNames = PTData.columns
-    dfs = []
-    dfs_rolling = []
-    for idx, name in enumerate(colNames):
-        # Select cells belonging to each pseudotime trajectory
-        colName = colNames[idx]
-        index = PTData[colName].index[PTData[colName].notnull()]
-        
-        subPT = PTData.loc[index, :]
-        subExpr = ExpressionData[index]
-        newExpressionData = subExpr[subPT.sort_values([colName]).index.astype(str)]
-        result = newExpressionData.rolling(window=2, axis=1, min_periods=1).mean()
-        dfs_rolling.append(result)
-        dfs.append(newExpressionData)
+    use_pseudotime = bool(RunnerObj.params.get("use_pseudotime", True))
+    if use_pseudotime:
+        PTData = pd.read_csv(
+            RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
+        )
+        colNames = PTData.columns
+        dfs = []
+        for idx, name in enumerate(colNames):
+            # Select cells belonging to each pseudotime trajectory
+            colName = colNames[idx]
+            index = PTData[colName].index[PTData[colName].notnull()]
+            subPT = PTData.loc[index, :]
+            subExpr = ExpressionData[index]
+            newExpressionData = subExpr[subPT.sort_values([colName]).index.astype(str)]
+            if bool(RunnerObj.params.get("rolling_average", False)):
+                result = newExpressionData.rolling(
+                    window=int(RunnerObj.params.get("rolling_window_size", 5)),
+                    axis=1,
+                    win_type="exponential",
+                    min_periods=1,
+                ).mean()
+                dfs.append(result)
+            else:
+                dfs.append(newExpressionData)
+    else:
+        orderedExpressionData = ExpressionData
 
-    exprName = "Boolformer/ExpressionData" + ".csv"        
-    
-    exprName_save = "Boolformer/ExpressionData_real" + ".csv"
-    exprName_rolling = "Boolformer/ExpressionData_rolling" + ".csv"
-    
-    
-    orderedExpressionData = pd.concat(dfs, axis = 1)
-    orderedExpressionDataRolling = pd.concat(dfs_rolling, axis = 1)
+    exprName_save = "Boolformer/ExpressionData_precluster" + ".csv"
+    orderedExpressionData = pd.concat(dfs, axis=1)
     orderedExpressionData.T.to_csv(
         RunnerObj.inputDir.joinpath(exprName_save), sep=",", header=True, index=True
     )
-    orderedExpressionDataRolling.T.to_csv(
-        RunnerObj.inputDir.joinpath(exprName_rolling), sep=",", header=True, index=True
-    )    
-    
-    
+
+    exprName = "Boolformer/ExpressionData" + ".csv"
     # The following three lines were created with the help of generative AI tools
+    num_clusters = int(RunnerObj.params.get("binarization_clusters", 3))
     ClusteredData = orderedExpressionData.apply(
-        lambda row: kmeans_cluster(row.values, 3), axis=1, result_type="broadcast"
+        lambda row: kmeans_cluster(
+            row.values,
+            num_clusters,
+            largest_zero=float(RunnerObj.params.get("largest_zero", 0.5)),
+        ),
+        axis=1,
+        result_type="broadcast",
     )
     min_avg_clusters = orderedExpressionData.apply(
         lambda row: get_min_avg_cluster(row, ClusteredData.loc[row.name]), axis=1
     )
-    print()
     BinExpression = ClusteredData != min_avg_clusters[:, np.newaxis]
-    #BinExpression = orderedExpressionData >= 0.50
-    #BinExpression.drop_duplicates(inplace=True)
-
-
     BinExpression.T.to_csv(
         RunnerObj.inputDir.joinpath(exprName), sep=",", header=True, index=True
     )
-        # BinExpression.T.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
-
-    # BinExpression = ExpressionData.apply(find_lowest_avg_cluster, axis=1).T
-    # Write unique cells x genes output to a file
 
 
 def run(RunnerObj):
@@ -162,9 +169,14 @@ def run(RunnerObj):
         + "/Boolformer/"
     )
     os.makedirs(outDir, exist_ok=True)
-    PTData = pd.read_csv(
-        RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
-    )
+
+    use_pseudotime = bool(RunnerObj.params.get("use_pseudotime", True))
+    if use_pseudotime:
+        PTData = pd.read_csv(
+            RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
+        )
+    else:
+        PTData = None
 
     boolformer_model = load_boolformer("noisy")
     start = time.time()
@@ -179,11 +191,18 @@ def run(RunnerObj):
         inputPath,
         outPath,
         outPathDynamics,
-        PTData,
-        beam_size=int(RunnerObj.params.get("beam_size", 5)),
-        max_points=int(RunnerObj.params.get("max_points", 1000)),
+        pseudotimeData=PTData,
         batch_size=int(RunnerObj.params.get("batch_size", 4)),
-        repeats=int(RunnerObj.params.get("repeats", 1))
+        beam_size=int(RunnerObj.params.get("beam_size", 5)),
+        beam_temperature=float(RunnerObj.params.get("beam_temperature", 0.1)),
+        beam_type=RunnerObj.params.get("beam_type", "search"),
+        difference_emphasis=bool(RunnerObj.params.get("difference_emphasis", False)),
+        max_points=int(RunnerObj.params.get("max_points", 5000)),
+        pseudotime_jump=bool(RunnerObj.params.get("pseudotime_jump", True)),
+        pseudotime_jump_size=float(RunnerObj.params.get("pseudotime_jump_size", 0.1)),
+        repeats=int(RunnerObj.params.get("repeats", 1)),
+        sample_size=int(RunnerObj.params.get("sample_size", 1000)),
+        target_randomize=bool(RunnerObj.params.get("target_randomize", True)),
     )
 
     timePath = str(outDir) + "time.txt"
@@ -200,15 +219,7 @@ def parseOutput(RunnerObj):
 
     :param RunnerObj: An instance of the :class:`BLRun`
     """
-    # Quit if output directory does not exist
     outDir = "outputs/" + str(RunnerObj.inputDir).split("inputs/")[1] + "/Boolformer/"
-
-    PTData = pd.read_csv(
-        RunnerObj.inputDir.joinpath(RunnerObj.cellData), header=0, index_col=0
-    )
-
-    colNames = PTData.columns
-
     outFileName = "outFile" + ".txt"
 
     outDF = pd.read_csv(outDir + outFileName, sep="\t", header=0)
@@ -217,10 +228,10 @@ def parseOutput(RunnerObj):
         == outDF.groupby(["TF", "target"])["importance"].transform("max")
     ]
     FinalDF.drop_duplicates(inplace=True)
-    # Read output
 
     outFile = open(outDir + "rankedEdges.csv", "w")
     outFile.write("Gene1" + "\t" + "Gene2" + "\t" + "EdgeWeight" + "\n")
+    FinalDF.sort_values("importance", inplace=True, ascending=False)
 
     for idx, row in FinalDF.iterrows():
         outFile.write(
@@ -235,10 +246,17 @@ def run_grn(
     outPath,
     outPathDynamics,
     pseudotimeData,
-    max_points=1000,
-    beam_size=1,
     batch_size=4,
+    beam_size=5,
+    beam_temperature=0.1,
+    beam_type="search",
+    difference_emphasis=False,
+    max_points=5000,
+    pseudotime_jump=True,
+    pseudotime_jump_size=0.1,
     repeats=1,
+    target_randomize=True,
+    sample_size=1000,
     sort_by="error",
 ):
     df = pd.read_csv(inputPath, header=0)
@@ -246,171 +264,150 @@ def run_grn(
     genes = list(df.columns)
 
     rows, columns = df.shape
-    seriesSize = rows
-    dynamic_errors, execution_times = [], []
     variable_counts = defaultdict(int)
 
     n_vars = len(df.columns)
-    # print(f"{n_vars}")
     num_datasets = n_vars
     num_batches = num_datasets // batch_size
-    # print(f"{num_batches}")
 
-    #pred_trees, error_arr, complexity_arr = [], [], []
-    
-    colNames = pseudotimeData.columns
-    pseudotimes_list = []
-    for idx, name in enumerate(colNames):
-        # Select cells belonging to each pseudotime trajectory
-        colName = colNames[idx]
-        index = pseudotimeData[colName].index[pseudotimeData[colName].notnull()]
+    if pseudotimeData is not None:
+        # x = random.sample(range(df.shape[0]), 50)
+        # x.sort()
+        # df = df.iloc[x, :]
+        rows, columns = df.shape
+
+        colNames = pseudotimeData.columns
+        pseudotimes_list = []
+        for idx, name in enumerate(colNames):
+            # Select cells belonging to each pseudotime trajectory
+            colName = colNames[idx]
+            index = pseudotimeData[colName].index[pseudotimeData[colName].notnull()]
+
+            subPT = pseudotimeData.loc[index, :]
+            pseudotimes_list.extend(list(subPT.sort_values([colName])[colName].values))
+
+        # pseudotimes_list = [pseudotimes_list[gah] for gah in x]
+        next_lists = [[] for _ in range(n_vars)]
+        for gene in range(n_vars):
+            for i in range(rows - 1):
+                start = i + 1
+                for j in range(start, rows):
+                    if pseudotime_jump:
+                        if (
+                            pseudotimes_list[j] - pseudotimes_list[i]
+                        ) >= pseudotime_jump_size:
+                            next_lists[gene].append(j)
+                            break
+                    else:
+                        if pseudotimes_list[i] < pseudotimes_list[j]:
+                            next_lists[gene].append(j)
+                            break
+                    if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows - 1):
+                        next_lists[gene].append(i)
+                        break
+
+        """
+        For every cell, for a given target gene
         
-        subPT = pseudotimeData.loc[index, :]
-        pseudotimes_list.extend(list(subPT.sort_values([colName])[colName].values))
+        set the output for the cell to the target value at 
+            - The next change in target value if within 0.1 psuedotime but beyond 0.005
+            - The current target value otherwise
+        """
+        if difference_emphasis:
+            for gene in range(n_vars):
+                for i in range(rows - 1):
+                    for j in range(i + 1, rows):
+                        if (
+                            pseudotimes_list[j]
+                            > pseudotimes_list[i] + pseudotime_jump_size * 10
+                        ) or (pseudotimes_list[j] < pseudotimes_list[i]):
+                            next_lists[gene].append(i + 1)
+                            break
+                        if df.values[None, i, gene] != df.values[None, j, gene] and (
+                            pseudotimes_list[j]
+                            > pseudotimes_list[i] + pseudotime_jump_size
+                        ):
+                            next_lists[gene].append(j)
+                            break
+                        if j == rows - 1:
+                            next_lists[gene].append(i + 1)
+                            break
 
-    #print(subPT.sort_values([colName]))
-    #print(pseudotimes_list)    
-    
-    #next_lists = [[] for _ in range(n_vars)]  
-    next_list = []
-    #for gene in range(n_vars):
-    for i in range(rows-1):
-        #val = random.uniform(0, 1)
-        if i+1 >= rows:
-            start = i+1
-        else:
-            start = i+1
-        #start = i + 1    
-        for j in range(start,rows):
-            if pseudotimes_list[i] < pseudotimes_list[j]:
-                #next_lists[gene].append(j)
-                next_list.append(j)
-                break
-            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
-                next_list.append(i)
-                break  
-    # for i in range(rows-1):
-    #     skip = random.randint(0, 20)
-    #     if i+skip >= rows:
-    #         start = i+1
-    #     else:
-    #         start = i+skip
-    #     for j in range(start,rows):
-    #         if pseudotimes_list[i] < pseudotimes_list[j]:
-    #             #next_lists[gene].append(j)
-    #             next_list.append(j)
-    #             break
-    #         if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
-    #             next_list.append(i)
-    #             break              
+            df = pd.concat([df.iloc[:-1], df])
 
-
-    '''
-    For every cell, for a given target gene
-    
-    set the output for the cell to the target value at 
-        - The next change in target value if within 0.1 psuedotime but beyond 0.005
-        - The current target value otherwise
-    
-    
-
-    for gene in range(n_vars):
-        for i in range(rows-1):      
-            for j in range(i+1,rows):
-                if (pseudotimes_list[j] > pseudotimes_list[i] + 0.05) or (pseudotimes_list[j] < pseudotimes_list[i]):
-                    next_lists[gene].append(i+1)
-                    break                
-                if df.values[None, i, gene] != df.values[None, j, gene] and (pseudotimes_list[j] > pseudotimes_list[i] + 0.01):
-                    next_lists[gene].append(j)
-                    break                
-                if j == rows-1:
-                    next_lists[gene].append(i+1)                    
-                    break
-    '''
-         
-    # last_j= -1
-    # last_change = []
-    # for i in range(rows-1):               
-    #     for j in range(i+1,rows):
-    #         if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
-    #             next_list.append(i)  
-    #             break      
-    #         elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):     
-    #             difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()                 
-    #             if i == last_j:                    
-    #                 if difference == last_change:                    
-    #                     continue   
-    #             elif i < last_j:
-    #                 next_list.append(last_j)
-    #                 break                 
-    #             next_list.append(j)
-    #             last_change = difference
-    #             last_j = j
-    #             break       
-    
-
-            
-            
-    #for i,change in enumerate(next_lists[2][1999:2999]):
-    #    print(i,change)
-        
-      
-
-    #df_new = pd.concat([df.iloc[:-1],df])
-    #print(df_new.shape)
     pred_trees_many = []
-    for i in range(repeats):
+    for i in tqdm.tqdm(range(repeats)):
         pred_trees, error_arr, complexity_arr = [], [], []
         for batch in range(num_batches):
-            x = [i for i in range(df.shape[0]-1)]
-            shuffle(x)
-            #inputs_ = df_new.values[None, :, :].repeat(batch_size, axis=0)
-            inputs_ = df.iloc[x].values[None, :, :].repeat(batch_size, axis=0)
-            inputs_unshuffled = df.values[None, :, :].repeat(batch_size, axis=0)
-            #print(inputs_.shape)
-            outputs_ = np.array(
-                [
-                    #inputs_[var - batch * batch_size, next_lists[var], var]
-                    inputs_unshuffled[var - batch * batch_size, [next_list[index] for index in x], var]
-                    for var in range(
-                        batch * batch_size, min((batch + 1) * batch_size, n_vars)
-                    )
-                ]
-            )
-            # print(outputs_.shape
+            inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
 
-            for var in range(batch * batch_size, min((batch + 1) * batch_size, n_vars)):
-                inputs_[var - batch * batch_size, :, var] = np.random.choice(
-                    [0, 1],
-                    size=inputs_[var - batch * batch_size, :, var].shape,
-                    p=[0.5, 0.5],
+            if pseudotimeData is not None:
+                outputs_ = np.array(
+                    [
+                        inputs_[var - batch * batch_size, next_lists[var], var]
+                        for var in range(
+                            batch * batch_size, min((batch + 1) * batch_size, n_vars)
+                        )
+                    ]
                 )
-            #inputs_ = inputs_[:, :-1, :]
+            else:
+                outputs_ = np.array(
+                    [
+                        inputs_[var - batch * batch_size, 1:, var]
+                        for var in range(
+                            batch * batch_size, min((batch + 1) * batch_size, n_vars)
+                        )
+                    ]
+                )
 
-            
+            if target_randomize:
+                for var in range(
+                    batch * batch_size, min((batch + 1) * batch_size, n_vars)
+                ):
+                    inputs_[var - batch * batch_size, :, var] = np.random.choice(
+                        [0, 1],
+                        size=inputs_[var - batch * batch_size, :, var].shape,
+                        p=[0.5, 0.5],
+                    )
+            else:
+                inputs_ = np.array(
+                    [
+                        np.squeeze(
+                            df.drop(df.columns[[num]], axis=1).values[None, :, :],
+                            axis=0,
+                        )
+                        for num in range(
+                            batch * batch_size, min((batch + 1) * batch_size, n_vars)
+                        )
+                    ]
+                )
+
+            inputs_ = inputs_[:, :-1, :]
+
             if max_points is not None:
                 inputs_, outputs_ = inputs_[:, :max_points, :], outputs_[:, :max_points]
-            # print(inputs_.shape)
+            x = random.sample(range(inputs_.shape[1]), sample_size)
             pred_trees_, error_arr_, complexity_arr_ = model.fit(
-                inputs_,
-                outputs_,
+                inputs_[:, x, :],
+                outputs_[:, x],
                 verbose=False,
                 beam_size=beam_size,
-                # beam_temperature=0.0005,
-                beam_temperature=0.5,
+                beam_temperature=beam_temperature,
+                beam_type=beam_type,
                 sort_by=sort_by,
             )
-                
+
             pred_trees.extend(pred_trees_), error_arr.extend(
                 error_arr_
             ), complexity_arr.extend(complexity_arr_)
         pred_trees_many.append(pred_trees)
-        
+
     print(error_arr)
     dynamics_file = open(outPathDynamics, "w")
     structure_file = open(outPath, "w")
     structure_file.write("\t".join(["TF", "target", "importance"]))
     print(len(pred_trees))
+
     for idx, pred_tree in enumerate(pred_trees):
         if not pred_tree:
             continue
@@ -420,43 +417,47 @@ def run_grn(
             variable_counts[var] += 1
         line = f"{genes[idx]} = {pred_tree.infix()}"
         line = line.replace("and", "&").replace("or", "||").replace("not", "!")
-        #print( list(used_variables))
-        #print( list(genes))
         used_variables = list(used_variables)
         used_variables.sort()
         for var in used_variables:
             index = int(var.split("_")[1]) - 1
+            if target_randomize == False and index >= idx:
+                index = index + 1
             if len(genes) <= index:
-                continue 
+                continue
             line = line.replace(var, genes[index])
         line += "\n"
         pred_tree.decrement_variables()
         dynamics_file.write(line)
-    
-    count_dict = {gene : {gene_inner : 0 for gene_inner in genes} for gene in genes}
+
+    count_dict = {gene: {gene_inner: 0 for gene_inner in genes} for gene in genes}
     for i in range(repeats):
         pred_trees = pred_trees_many[i]
         for idx, pred_tree in enumerate(pred_trees):
             if not pred_tree:
-                continue            
+                continue
             pred_tree.increment_variables()
             used_variables = pred_tree.get_variables()
             used_variables = list(used_variables)
-            used_variables.sort()                        
+            used_variables.sort()
             for var in used_variables:
                 index = int(var.split("_")[1]) - 1
+                if target_randomize == False and index >= idx:
+                    index = index + 1
                 if len(genes) <= index:
-                    continue                 
+                    continue
                 count_dict[genes[idx]][genes[index]] += 1
     print(count_dict)
     for gene in genes:
         for gene_inner in genes:
             structure_file.write(
-                "\n" + "\t".join([gene_inner, gene, str(count_dict[gene][gene_inner]/repeats)])
+                "\n"
+                + "\t".join(
+                    [gene_inner, gene, str(count_dict[gene][gene_inner] / repeats)]
+                )
             )
-                
-    
-            # structure_file.write(influence)
+
+    structure_file.close()
 
     # print top 10 variables sorted by count
     print(sorted(variable_counts.items(), key=lambda x: -x[1])[:10])

@@ -23,15 +23,16 @@ import random
 
 # The following two methods kmeans_cluster and get_min_avg_cluster were created with the help of generative AI tools
 def kmeans_cluster(row_values, num_clusters):
-    kmeans = KMeans(n_clusters=num_clusters,random_state=42)
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42)
     kmeans.fit(row_values.reshape(-1, 1))
     cluster_labels = kmeans.labels_
-    
-    
+
     cluster_avg_values = {}
 
     for cluster_label in np.unique(cluster_labels):
-        cluster_avg_values[cluster_label] = np.mean(row_values[cluster_labels == cluster_label])
+        cluster_avg_values[cluster_label] = np.mean(
+            row_values[cluster_labels == cluster_label]
+        )
 
     min_avg_cluster = min(cluster_avg_values, key=cluster_avg_values.get)
     max_avg_cluster = max(cluster_avg_values, key=cluster_avg_values.get)
@@ -42,11 +43,11 @@ def kmeans_cluster(row_values, num_clusters):
     #     if (min(row_values) < 0.45):
     #         min_avg_cluster = -1
     #         cluster_labels = [-1 if val < 0.45 else 1 for val in list(row_values)]
-    for i,val in enumerate(list(row_values)):
+    for i, val in enumerate(list(row_values)):
         if cluster_labels[i] == min_avg_cluster:
             if val > 0.5:
                 cluster_labels[i] == -1
-    
+
     return cluster_labels
 
 
@@ -69,8 +70,6 @@ def get_min_avg_cluster(row, clusters):
 def generateInputs(RunnerObj):
     """
     Function to generate desired inputs for Boolformer.
-    If the folder/files under RunnerObj.datadir exist,
-    this function will not do anything.
 
     :param RunnerObj: An instance of the :class:`BLRun`
     """
@@ -96,7 +95,7 @@ def generateInputs(RunnerObj):
         # Select cells belonging to each pseudotime trajectory
         colName = colNames[idx]
         index = PTData[colName].index[PTData[colName].notnull()]
-        
+
         subPT = PTData.loc[index, :]
         subExpr = ExpressionData[index]
         newExpressionData = subExpr[subPT.sort_values([colName]).index.astype(str)]
@@ -104,22 +103,20 @@ def generateInputs(RunnerObj):
         dfs_rolling.append(result)
         dfs.append(newExpressionData)
 
-    exprName = "Boolformer/ExpressionData" + ".csv"        
-    
+    exprName = "Boolformer/ExpressionData" + ".csv"
+
     exprName_save = "Boolformer/ExpressionData_real" + ".csv"
     exprName_rolling = "Boolformer/ExpressionData_rolling" + ".csv"
-    
-    
-    orderedExpressionData = pd.concat(dfs, axis = 1)
-    orderedExpressionDataRolling = pd.concat(dfs_rolling, axis = 1)
+
+    orderedExpressionData = pd.concat(dfs, axis=1)
+    orderedExpressionDataRolling = pd.concat(dfs_rolling, axis=1)
     orderedExpressionData.T.to_csv(
         RunnerObj.inputDir.joinpath(exprName_save), sep=",", header=True, index=True
     )
     orderedExpressionDataRolling.T.to_csv(
         RunnerObj.inputDir.joinpath(exprName_rolling), sep=",", header=True, index=True
-    )    
-    
-    
+    )
+
     # The following three lines were created with the help of generative AI tools
     ClusteredData = orderedExpressionData.apply(
         lambda row: kmeans_cluster(row.values, 3), axis=1, result_type="broadcast"
@@ -129,14 +126,13 @@ def generateInputs(RunnerObj):
     )
     print()
     BinExpression = ClusteredData != min_avg_clusters[:, np.newaxis]
-    #BinExpression = orderedExpressionData >= 0.50
-    #BinExpression.drop_duplicates(inplace=True)
-
+    # BinExpression = orderedExpressionData >= 0.50
+    # BinExpression.drop_duplicates(inplace=True)
 
     BinExpression.T.to_csv(
         RunnerObj.inputDir.joinpath(exprName), sep=",", header=True, index=True
     )
-        # BinExpression.T.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
+    # BinExpression.T.to_csv(RunnerObj.inputDir.joinpath("Boolformer/ExpressionData.csv"))
 
     # BinExpression = ExpressionData.apply(find_lowest_avg_cluster, axis=1).T
     # Write unique cells x genes output to a file
@@ -182,7 +178,7 @@ def run(RunnerObj):
         beam_size=int(RunnerObj.params.get("beam_size", 5)),
         max_points=int(RunnerObj.params.get("max_points", 1000)),
         batch_size=int(RunnerObj.params.get("batch_size", 4)),
-        repeats=int(RunnerObj.params.get("repeats", 1))
+        repeats=int(RunnerObj.params.get("repeats", 1)),
     )
 
     timePath = str(outDir) + "time.txt"
@@ -255,39 +251,39 @@ def run_grn(
     num_batches = num_datasets // batch_size
     # print(f"{num_batches}")
 
-    #pred_trees, error_arr, complexity_arr = [], [], []
-    
+    # pred_trees, error_arr, complexity_arr = [], [], []
+
     colNames = pseudotimeData.columns
     pseudotimes_list = []
     for idx, name in enumerate(colNames):
         # Select cells belonging to each pseudotime trajectory
         colName = colNames[idx]
         index = pseudotimeData[colName].index[pseudotimeData[colName].notnull()]
-        
+
         subPT = pseudotimeData.loc[index, :]
         pseudotimes_list.extend(list(subPT.sort_values([colName])[colName].values))
 
-    #print(subPT.sort_values([colName]))
-    #print(pseudotimes_list)    
-    
-    #next_lists = [[] for _ in range(n_vars)]  
+    # print(subPT.sort_values([colName]))
+    # print(pseudotimes_list)
+
+    # next_lists = [[] for _ in range(n_vars)]
     next_list = []
-    #for gene in range(n_vars):
-    for i in range(rows-1):
-        #val = random.uniform(0, 1)
-        if i+1 >= rows:
-            start = i+1
+    # for gene in range(n_vars):
+    for i in range(rows - 1):
+        # val = random.uniform(0, 1)
+        if i + 1 >= rows:
+            start = i + 1
         else:
-            start = i+1
-        #start = i + 1    
-        for j in range(start,rows):
+            start = i + 1
+        # start = i + 1
+        for j in range(start, rows):
             if pseudotimes_list[i] < pseudotimes_list[j]:
-                #next_lists[gene].append(j)
+                # next_lists[gene].append(j)
                 next_list.append(j)
                 break
-            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
+            if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows - 1):
                 next_list.append(i)
-                break  
+                break
     # for i in range(rows-1):
     #     skip = random.randint(0, 20)
     #     if i+skip >= rows:
@@ -301,10 +297,9 @@ def run_grn(
     #             break
     #         if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
     #             next_list.append(i)
-    #             break              
+    #             break
 
-
-    '''
+    """
     For every cell, for a given target gene
     
     set the output for the cell to the target value at 
@@ -325,60 +320,52 @@ def run_grn(
                 if j == rows-1:
                     next_lists[gene].append(i+1)                    
                     break
-    '''
-         
+    """
+
     # last_j= -1
     # last_change = []
-    # for i in range(rows-1):               
+    # for i in range(rows-1):
     #     for j in range(i+1,rows):
     #         if (pseudotimes_list[i] > pseudotimes_list[j]) or (j == rows-1):
-    #             next_list.append(i)  
-    #             break      
-    #         elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):     
-    #             difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()                 
-    #             if i == last_j:                    
-    #                 if difference == last_change:                    
-    #                     continue   
+    #             next_list.append(i)
+    #             break
+    #         elif not (np.array_equal(df.values[None, i, :], df.values[None, j, :])):
+    #             difference = np.where(df.values[None, i, :] != df.values[None, j, :])[1].tolist()
+    #             if i == last_j:
+    #                 if difference == last_change:
+    #                     continue
     #             elif i < last_j:
     #                 next_list.append(last_j)
-    #                 break                 
+    #                 break
     #             next_list.append(j)
     #             last_change = difference
     #             last_j = j
-    #             break       
-    
+    #             break
 
-            
-            
-    #for i,change in enumerate(next_lists[2][1999:2999]):
+    # for i,change in enumerate(next_lists[2][1999:2999]):
     #    print(i,change)
-        
-      
 
-    #df_new = pd.concat([df.iloc[:-1],df])
-    #print(df_new.shape)
+    # df_new = pd.concat([df.iloc[:-1],df])
+    # print(df_new.shape)
     pred_trees_many = []
     for i in range(repeats):
         pred_trees, error_arr, complexity_arr = [], [], []
         for batch in range(num_batches):
-            
-            #inputs_ = df_new.values[None, :, :].repeat(batch_size, axis=0)
+            # inputs_ = df_new.values[None, :, :].repeat(batch_size, axis=0)
             inputs_ = df.values[None, :, :].repeat(batch_size, axis=0)
-            #print(inputs_.shape)
+            # print(inputs_.shape)
             outputs_ = np.array(
                 [
-                    #inputs_[var - batch * batch_size, next_lists[var], var]
+                    # inputs_[var - batch * batch_size, next_lists[var], var]
                     inputs_[var - batch * batch_size, next_list, var]
                     for var in range(
                         batch * batch_size, min((batch + 1) * batch_size, n_vars)
                     )
                 ]
             )
-            
-            #inputs_ = np.array([np.squeeze(df.drop(df.columns[[num]],axis=1).values[None, :, :],axis=0) for num in range(batch * batch_size, min((batch + 1) * batch_size, n_vars))])
-            
-            
-            
+
+            # inputs_ = np.array([np.squeeze(df.drop(df.columns[[num]],axis=1).values[None, :, :],axis=0) for num in range(batch * batch_size, min((batch + 1) * batch_size, n_vars))])
+
             # print(outputs_.shape
 
             for var in range(batch * batch_size, min((batch + 1) * batch_size, n_vars)):
@@ -389,7 +376,6 @@ def run_grn(
                 )
             inputs_ = inputs_[:, :-1, :]
 
-            
             if max_points is not None:
                 inputs_, outputs_ = inputs_[:, :max_points, :], outputs_[:, :max_points]
             # print(inputs_.shape)
@@ -403,12 +389,12 @@ def run_grn(
                 beam_type="sampling",
                 sort_by=sort_by,
             )
-                
+
             pred_trees.extend(pred_trees_), error_arr.extend(
                 error_arr_
             ), complexity_arr.extend(complexity_arr_)
         pred_trees_many.append(pred_trees)
-        
+
     print(error_arr)
     dynamics_file = open(outPathDynamics, "w")
     structure_file = open(outPath, "w")
@@ -423,46 +409,48 @@ def run_grn(
             variable_counts[var] += 1
         line = f"{genes[idx]} = {pred_tree.infix()}"
         line = line.replace("and", "&").replace("or", "||").replace("not", "!")
-        #print( list(used_variables))
-        #print( list(genes))
+        # print( list(used_variables))
+        # print( list(genes))
         used_variables = list(used_variables)
         used_variables.sort()
         for var in used_variables:
             index = int(var.split("_")[1]) - 1
-            #if index >= idx:
+            # if index >= idx:
             #    index = index+1
             if len(genes) <= index:
-                continue 
+                continue
             line = line.replace(var, genes[index])
         line += "\n"
         pred_tree.decrement_variables()
         dynamics_file.write(line)
-    
-    count_dict = {gene : {gene_inner : 0 for gene_inner in genes} for gene in genes}
+
+    count_dict = {gene: {gene_inner: 0 for gene_inner in genes} for gene in genes}
     for i in range(repeats):
         pred_trees = pred_trees_many[i]
         for idx, pred_tree in enumerate(pred_trees):
             if not pred_tree:
-                continue            
+                continue
             pred_tree.increment_variables()
             used_variables = pred_tree.get_variables()
             used_variables = list(used_variables)
-            used_variables.sort()                        
+            used_variables.sort()
             for var in used_variables:
                 index = int(var.split("_")[1]) - 1
-                #if index >= idx:
-                #    index = index+1                
+                # if index >= idx:
+                #    index = index+1
                 if len(genes) <= index:
-                    continue                 
+                    continue
                 count_dict[genes[idx]][genes[index]] += 1
     print(count_dict)
     for gene in genes:
         for gene_inner in genes:
             structure_file.write(
-                "\n" + "\t".join([gene_inner, gene, str(count_dict[gene][gene_inner]/repeats)])
+                "\n"
+                + "\t".join(
+                    [gene_inner, gene, str(count_dict[gene][gene_inner] / repeats)]
+                )
             )
-                
-    
+
             # structure_file.write(influence)
 
     # print top 10 variables sorted by count
