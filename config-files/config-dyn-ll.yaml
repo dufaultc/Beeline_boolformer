@@ -3,8 +3,8 @@
 input_settings:
 
     # Base input directory
-    input_dir : "BEELINE-data/inputs/Curated"
-    dataset_dir: "HSC"
+    input_dir : "BEELINE-data/inputs/Synthetic"
+    dataset_dir: "dyn-LL"
     # Subdirectory of inputs that datasets are placed in
     #dataset_dir: "GSD"
 
@@ -23,27 +23,27 @@ input_settings:
     # BEELINE will assume that these files are present under the default names 
     # "ExpressionData.csv", "PseudoTime.csv" and "refNetwork.csv", respectively.
     datasets:
-         - name: "HSC-2000-1"
+         - name: "dyn-LL-100-1"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
            trueEdges: "refNetwork.csv"
-         - name: "HSC-2000-1-50"
+         - name: "dyn-LL-500-1"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
            trueEdges: "refNetwork.csv"
-         - name: "HSC-2000-1-70"
+         - name: "dyn-LL-2000-1"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
-           trueEdges: "refNetwork.csv"    
-         - name: "HSC-2000-2"
-           exprData: "ExpressionData.csv"
-           cellData: "PseudoTime.csv"
-           trueEdges: "refNetwork.csv"
-         - name: "HSC-2000-2-50"
+           trueEdges: "refNetwork.csv"  
+         - name: "dyn-LL-100-2"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
            trueEdges: "refNetwork.csv"
-         - name: "HSC-2000-2-70"
+         - name: "dyn-LL-500-2"
+           exprData: "ExpressionData.csv"
+           cellData: "PseudoTime.csv"
+           trueEdges: "refNetwork.csv"
+         - name: "dyn-LL-2000-2"
            exprData: "ExpressionData.csv"
            cellData: "PseudoTime.csv"
            trueEdges: "refNetwork.csv"                                 
@@ -64,7 +64,7 @@ input_settings:
 
               batch_size: [1]              
               beam_size: [5]
-              beam_temperature : [0.9]                 
+              beam_temperature : [0.05]                 
               beam_type : ["search"]
               binarization_clusters : [3]           
               difference_emphasis : [False]
@@ -76,9 +76,11 @@ input_settings:
               repeats : [10]
               rolling_average : [True]
               rolling_window_size : [5]
-              sample_size : [100]
+              sample_size : [99]
               target_randomize : [True]              
-              use_pseudotime: [True]     
+              use_pseudotime: [True]
+
+              
         - name: "PIDC"
           params: 
               should_run: [True]
@@ -191,4 +193,4 @@ output_settings:
 
     # Base output directory
     output_dir: "outputs"
-    output_prefix: "HSC"
+    output_prefix: "dyn-ll"

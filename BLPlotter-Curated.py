@@ -98,7 +98,7 @@ def boxplot(opts, evalConfigs, datasets, randValue, resTypeFile, resTypeName):
         DF = DFs[i]
         modifiedDF = pd.melt(DF, id_vars=['dataset'], 
         # value_vars=['PIDC', 'GENIE3', 'GRNBOOST2', 'PPCOR', 'SCODE', 'GRISLI', 'SINGE', 'SCNS', 'LEAP', 'SINCERITIES', 'GRNVBEM', 'SCRIBE', 'SCSGL'])
-        value_vars=['SINCERITIES', 'SCRIBE', 'SINGE', 'PPCOR', 'PIDC', 'GENIE3', 'LEAP', 'GRNBOOST2', 'GRISLI', 'GRNVBEM', 'SCNS', 'SCODE', 'SCSGL'])
+        value_vars=["Boolformer",'SINCERITIES', 'PIDC', 'GENIE3', 'LEAP'])
         
         conditions = [
             modifiedDF['dataset'].str.contains('-50'),
@@ -147,7 +147,7 @@ def boxplot(opts, evalConfigs, datasets, randValue, resTypeFile, resTypeName):
                
     file = opts.output + '/' \
             + '-'.join([str(c.output_settings.output_prefix) for c in evalConfigs]) \
-            + '-boxplot-' + resTypeFile + '.pdf'
+            + '-boxplot-' + resTypeFile + '.png'
     print("Boxplot saved to " + file)
     plt.savefig(file, dpi = 300)
 
@@ -526,7 +526,7 @@ def main():
         plt.tight_layout()
         
         file = opts.output + '/' \
-                + '-'.join([str(c.output_settings.output_prefix) for c in evalConfigs]) + '-overview.pdf'
+                + '-'.join([str(c.output_settings.output_prefix) for c in evalConfigs]) + '-overview.png'
         print("Overview plot saved to " + file)
         plt.savefig(file)
 

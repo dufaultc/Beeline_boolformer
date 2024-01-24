@@ -97,17 +97,16 @@ def boxplot(opts, evalConfigs, datasets, randValue, resTypeFile, resTypeName):
     for i, dataset in enumerate(datasets):
         DF = DFs[i]
         modifiedDF = pd.melt(DF, id_vars=['dataset'], 
-        value_vars=['SINCERITIES', 'SCRIBE', 'SINGE', 'PPCOR', 'PIDC', 'GENIE3', 'LEAP', 'GRNBOOST2', 'GRISLI', 'GRNVBEM', 'SCNS', 'SCODE', 'SCSGL'])
+        value_vars=["Boolformer",'SINCERITIES','PIDC', 'GENIE3', 'LEAP'])
         
         conditions = [
             modifiedDF['dataset'].str.contains('-100-'),
-            modifiedDF['dataset'].str.contains('-200-'),
             modifiedDF['dataset'].str.contains('-500-'),
             modifiedDF['dataset'].str.contains('-2000-')
         ]
-        outputs = ['100', '200', '500', '2000']
-        modifiedDF['category'] = pd.Series(np.select(conditions, outputs, '5000'))
-        modifiedDF['category'] = modifiedDF['category'].astype('category').cat.reorder_categories(['100', '200', '500', '2000', '5000'])        
+        outputs = ['100', '500', '2000']
+        modifiedDF['category'] = pd.Series(np.select(conditions, outputs, '2000'))
+        modifiedDF['category'] = modifiedDF['category'].astype('category').cat.reorder_categories(['100', '500', '2000'])        
               
         if len(datasets) > 1:
             subax = axes[i]
@@ -148,7 +147,7 @@ def boxplot(opts, evalConfigs, datasets, randValue, resTypeFile, resTypeName):
                
     file = opts.output + '/' \
             + '-'.join([str(c.output_settings.output_prefix) for c in evalConfigs]) \
-            + '-boxplot-' + resTypeFile + '.pdf'
+            + '-boxplot-' + resTypeFile + '.png'
     print("Boxplot saved to " + file)
     plt.savefig(file, dpi = 300)
 
@@ -527,7 +526,7 @@ def main():
         plt.tight_layout()
         
         file = opts.output + '/' \
-                + '-'.join([str(c.output_settings.output_prefix) for c in evalConfigs]) + '-overview.pdf'
+                + '-'.join([str(c.output_settings.output_prefix) for c in evalConfigs]) + '-overview.png'
         print("Overview plot saved to " + file)
         plt.savefig(file)
 
