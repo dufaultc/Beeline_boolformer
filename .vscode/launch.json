@@ -1,0 +1,42 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "boolformer_beeline",
+            "type": "python",
+            "request": "launch",
+            "module": "BLRunner",
+            "cwd": "/home/cameron/repos/Beeline_boolformer",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "/home/cameron/miniconda3/envs/BEELINE/bin/python",
+            "args": [
+                "--config",
+                "config-files/config-dyn-li.yaml"
+            ]
+        },
+        {
+            "name": "boolformer_eval",
+            "type": "python",
+            "request": "launch",
+            "module": "BLEvaluator",
+            "cwd": "/home/cameron/repos/Beeline_boolformer",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "python": "/home/cameron/miniconda3/envs/BEELINE/bin/python",
+            "args": [
+                "--config",
+                "config-files/config-mcad-quick.yaml",
+                "--auc",
+                "-j",
+                "-t",
+                "-r",
+                "-e",
+                "-p"
+            ]
+        }
+    ]
+}

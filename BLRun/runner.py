@@ -16,77 +16,79 @@ import BLRun.boolformerRunner as Boolformer
 
 from pathlib import Path
 
-InputMapper = {'SCODE':SCODE.generateInputs,
-               'SINCERITIES':SINCERITIES.generateInputs,
-               'Boolformer':Boolformer.generateInputs,               
-               'SCNS':SCNS.generateInputs,
-               'PIDC':PIDC.generateInputs,
-               'GRNVBEM':GRNVBEM.generateInputs,
-               'GENIE3':GENIE3.generateInputs,
-               'GRNBOOST2':GRNBOOST2.generateInputs,
-               'LEAP':LEAP.generateInputs,
-               'JUMP3':JUMP3.generateInputs,
-               'PPCOR':PPCOR.generateInputs,
-               'GRISLI':GRISLI.generateInputs,
-               'SINGE':SINGE.generateInputs,
-               'SCRIBE':SCRIBE.generateInputs,
-               'SCSGL':SCSGL.generateInputs}
+InputMapper = {
+    "SCODE": SCODE.generateInputs,
+    "SINCERITIES": SINCERITIES.generateInputs,
+    "Boolformer": Boolformer.generateInputs,
+    "SCNS": SCNS.generateInputs,
+    "PIDC": PIDC.generateInputs,
+    "GRNVBEM": GRNVBEM.generateInputs,
+    "GENIE3": GENIE3.generateInputs,
+    "GRNBOOST2": GRNBOOST2.generateInputs,
+    "LEAP": LEAP.generateInputs,
+    "JUMP3": JUMP3.generateInputs,
+    "PPCOR": PPCOR.generateInputs,
+    "GRISLI": GRISLI.generateInputs,
+    "SINGE": SINGE.generateInputs,
+    "SCRIBE": SCRIBE.generateInputs,
+    "SCSGL": SCSGL.generateInputs,
+}
 
 
+AlgorithmMapper = {
+    "SCODE": SCODE.run,
+    "SINCERITIES": SINCERITIES.run,
+    "Boolformer": Boolformer.run,
+    "SCNS": SCNS.run,
+    "PIDC": PIDC.run,
+    "GRNVBEM": GRNVBEM.run,
+    "GENIE3": GENIE3.run,
+    "GRNBOOST2": GRNBOOST2.run,
+    "LEAP": LEAP.run,
+    "JUMP3": JUMP3.run,
+    "PPCOR": PPCOR.run,
+    "GRISLI": GRISLI.run,
+    "SINGE": SINGE.run,
+    "SCRIBE": SCRIBE.run,
+    "SCSGL": SCSGL.run,
+}
 
 
-AlgorithmMapper = {'SCODE':SCODE.run,
-            'SINCERITIES':SINCERITIES.run,
-            'Boolformer':Boolformer.run,            
-            'SCNS':SCNS.run,
-            'PIDC':PIDC.run,
-            'GRNVBEM':GRNVBEM.run,
-            'GENIE3':GENIE3.run,
-            'GRNBOOST2':GRNBOOST2.run,
-            'LEAP':LEAP.run,
-            'JUMP3':JUMP3.run,
-            'PPCOR':PPCOR.run,
-            'GRISLI':GRISLI.run,
-            'SINGE':SINGE.run,
-            'SCRIBE':SCRIBE.run,
-            'SCSGL':SCSGL.run}
-
-
-
-OutputParser = {'SCODE':SCODE.parseOutput, 
-            'SINCERITIES':SINCERITIES.parseOutput,
-            'Boolformer':Boolformer.parseOutput,            
-            'SCNS':SCNS.parseOutput,
-            'PIDC':PIDC.parseOutput,
-            'GRNVBEM':GRNVBEM.parseOutput,
-            'GENIE3':GENIE3.parseOutput,
-            'GRNBOOST2':GRNBOOST2.parseOutput,
-            'LEAP': LEAP.parseOutput,
-            'JUMP3': JUMP3.parseOutput,
-            'PPCOR':PPCOR.parseOutput,
-            'GRISLI':GRISLI.parseOutput,
-            'SINGE':SINGE.parseOutput,
-            'SCRIBE':SCRIBE.parseOutput,
-            'SCSGL':SCSGL.parseOutput}
+OutputParser = {
+    "SCODE": SCODE.parseOutput,
+    "SINCERITIES": SINCERITIES.parseOutput,
+    "Boolformer": Boolformer.parseOutput,
+    "SCNS": SCNS.parseOutput,
+    "PIDC": PIDC.parseOutput,
+    "GRNVBEM": GRNVBEM.parseOutput,
+    "GENIE3": GENIE3.parseOutput,
+    "GRNBOOST2": GRNBOOST2.parseOutput,
+    "LEAP": LEAP.parseOutput,
+    "JUMP3": JUMP3.parseOutput,
+    "PPCOR": PPCOR.parseOutput,
+    "GRISLI": GRISLI.parseOutput,
+    "SINGE": SINGE.parseOutput,
+    "SCRIBE": SCRIBE.parseOutput,
+    "SCSGL": SCSGL.parseOutput,
+}
 
 
 class Runner(object):
-    '''
+    """
     A runnable analysis to be incorporated into the pipeline
-    '''
-    def __init__(self,
-                params):
-        self.name = params['name']
-        self.inputDir = params['inputDir']
-        self.params = params['params']
-        self.exprData = params['exprData']
-        self.cellData = params['cellData']
-        self.trueEdges = params['trueEdges'] #used for evaluation
-        
+    """
+
+    def __init__(self, params):
+        self.name = params["name"]
+        self.inputDir = params["inputDir"]
+        self.params = params["params"]
+        self.exprData = params["exprData"]
+        self.cellData = params["cellData"]
+        self.trueEdges = params["trueEdges"]  # used for evaluation
+
     def generateInputs(self):
         InputMapper[self.name](self)
-        
-        
+
     def run(self):
         AlgorithmMapper[self.name](self)
 

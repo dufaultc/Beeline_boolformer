@@ -1,0 +1,26 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run boolformer beeline",
+            "type": "shell",
+            "command": "/home/cameron/miniconda3/envs/BEELINE/bin/python",
+            "args": [
+                "BLRunner.py",
+                "--config",
+                "config-files/config-vsc.yaml"
+            ],
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}
